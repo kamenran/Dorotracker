@@ -1,0 +1,142 @@
+function parseDate(dateString) {
+  return new Date(`${dateString}T00:00:00`);
+}
+
+function toDateString(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function listDates(startDate, endDate) {
+  const dates = [];
+  const cursor = parseDate(startDate);
+  const limit = parseDate(endDate);
+
+  while (cursor <= limit) {
+    dates.push(toDateString(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
+}
+
+function pomodoroCount(minutes, pomodoroLength) {
+  return Math.max(Math.ceil(minutes / pomodoroLength), 1);
+}
+
+export function generateSchedule({
+  assignments,
+  startDate,
+  dailyStudyLimit,
+  minimumBlock,
+  pomodoroLength,
+  deadlineBufferDays = 1,
+}) {
+  const sortedAssignments = [...assignments].sort((left, right) => {
+    return (
+      parseDate(left.dueDate) - parseDate(right.dueDate) ||
+      right.priority - left.priority ||
+      left.title.localeCompare(right.title)
+    );
+  });
+
+  const horizonEnd = sortedAssignments.reduce((latest, assignment) => {
+    return parseDate(assignment.dueDate) > parseDate(latest) ? assignment.dueDate : latest;
+  }, startDate);
+
+  const allDates = listDates(startDate, horizonEnd);
+  const capacityByDate = Object.fromEntries(allDates.map((date) => [date, dailyStudyLimit]));
+
+  const blocks = [];
+  const warnings = [];
+
+  for (const assignment of sortedAssignments) {
+    let remainingMinutes = Number(assignment.estimatedMinutes);
+    const bufferedDeadline = parseDate(assignment.dueDate);
+    bufferedDeadline.setDate(bufferedDeadline.getDate() - deadlineBufferDays);
+
+    let availableDates = allDates.filter((date) => parseDate(date) <= bufferedDeadline);
+    if (!availableDates.length) {
+      availableDates = [startDate];
+    }
+
+    for (let index = 0; index < availableDates.length && remainingMinutes > 0; index += 1) {
+      const date = availableDates[index];
+      const remainingDays = availableDates.length - index;
+      const targetSlice = Math.max(Math.ceil(remainingMinutes / remainingDays), minimumBlock);
+      const availableCapacity = capacityByDate[date] || 0;
+      const minutes = Math.min(targetSlice, availableCapacity, remainingMinutes);
+
+      if (minutes <= 0) {
+        continue;
+      }
+
+      blocks.push({
+        assignmentTitle: assignment.title,
+        dueDate: assignment.dueDate,
+        scheduledDate: date,
+        minutes,
+        pomodoros: pomodoroCount(minutes, pomodoroLength),
+        priority: assignment.priority,
+        overdue: parseDate(date) > parseDate(assignment.dueDate),
+      });
+
+      capacityByDate[date] -= minutes;
+      remainingMinutes -= minutes;
+    }
+
+    if (remainingMinutes > 0) {
+      warnings.push(
+        `${assignment.title} could not fully fit before its deadline. ${remainingMinutes} minute(s) remain unscheduled.`,
+      );
+    }
+  }
+
+  return {
+    blocks: blocks.sort((left, right) => {
+      return (
+        parseDate(left.scheduledDate) - parseDate(right.scheduledDate) ||
+        left.assignmentTitle.localeCompare(right.assignmentTitle)
+      );
+    }),
+    warnings,
+    summary: {
+      assignmentCount: assignments.length,
+      totalMinutes: blocks.reduce((total, block) => total + block.minutes, 0),
+      overloadedAssignments: warnings.length,
+    },
+  };
+}
+
+export function reschedule({
+  assignments,
+  startDate,
+  dailyStudyLimit,
+  minimumBlock,
+  pomodoroLength,
+  deadlineBufferDays = 1,
+  missedAssignmentTitle = "",
+}) {
+  const adjustedAssignments = assignments.map((assignment) => {
+    const currentMinutesCompleted = Number(assignment.minutesCompleted || 0);
+    const adjustedMinutes = Math.max(Number(assignment.estimatedMinutes) - currentMinutesCompleted, 0);
+
+    return {
+      ...assignment,
+      estimatedMinutes: adjustedMinutes,
+      minutesCompleted: 0,
+      priority:
+        missedAssignmentTitle && assignment.title === missedAssignmentTitle
+          ? Math.min(Number(assignment.priority) + 1, 5)
+          : assignment.priority,
+    };
+  });
+
+  return generateSchedule({
+    assignments: adjustedAssignments,
+    startDate,
+    dailyStudyLimit,
+    minimumBlock,
+    pomodoroLength,
+    deadlineBufferDays,
+  });
+}

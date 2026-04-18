@@ -1,1 +1,7 @@
 .DS_Store
+.env
+node_modules/
+database/mysql-data/
+database/mysql-run/
+database/local-store.json
+tools/
