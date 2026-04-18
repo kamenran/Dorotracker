@@ -25,57 +25,221 @@ The app uses:
 - MySQL for persistence
 - a lightweight frontend styled around the DoroTracker logo colors
 
-## Easiest local run
+## Fresh machine setup
 
-On this Mac repo, the launcher can open the website for you after MySQL is already running:
+If you are opening this project on a brand new computer, you need two things installed first:
 
-- macOS: [MAC DOUBLE CLICK.command](/Users/kamraneisenberg/Documents/Dorotracker/MAC%20DOUBLE%20CLICK.command)
+- Node.js
+- MySQL
 
-Windows launcher is included for the app shell, but it expects MySQL to already be installed on that machine:
+Installing only MySQL is not enough.
+Installing only Node.js is not enough.
+You need both.
 
-- Windows: `WINDOWS DOUBLE CLICK.bat`
+## Mac setup
 
-## Manual run
+### 1. Install Homebrew
 
-If you want to run it from Terminal instead:
+Open Terminal and run:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### 2. Install Node.js and MySQL
+
+In Terminal, run:
+
+```bash
+brew install node
+brew install mysql
+```
+
+### 3. Start MySQL
+
+Run:
+
+```bash
+brew services start mysql
+```
+
+### 4. Download the project
+
+Either:
+
+- download the ZIP from GitHub and extract it
+- or clone it with Git:
+
+```bash
+git clone https://github.com/kamenran/Dorotracker.git
+cd Dorotracker
+git checkout kamran-feature
+```
+
+### 5. Install project dependencies
+
+Inside the project folder, run:
+
+```bash
+npm install
+```
+
+### 6. Create the database and tables
+
+Still inside the project folder, run:
+
+```bash
+mysql -u root < database/schema.sql
+```
+
+If your MySQL setup asks for a password, use:
+
+```bash
+mysql -u root -p < database/schema.sql
+```
+
+### 7. Start the app
+
+You can either double click:
+
+- [MAC DOUBLE CLICK.command](/Users/kamraneisenberg/Documents/Dorotracker/MAC%20DOUBLE%20CLICK.command)
+
+Or run:
 
 ```bash
 ./scripts/start_app.sh
 ```
 
-Then open `http://127.0.0.1:8000`.
+### 8. Open the site
 
-## Local setup requirements
+Go to:
 
-Installing MySQL by itself is not enough. To run DoroTracker locally, each developer needs:
+```text
+http://127.0.0.1:8000
+```
 
-- Node.js installed
-- MySQL installed
-- the MySQL server running
-- the project database created from [database/schema.sql](/Users/kamraneisenberg/Documents/Dorotracker/database/schema.sql)
+## Windows setup
 
-## How another group member runs it
+### 1. Install Node.js
 
-1. Install Node.js.
-2. Install MySQL.
-3. Start the MySQL server.
-4. Create the database and tables by running `database/schema.sql`.
-5. Start the app.
+Download and install Node.js from:
 
-On macOS, if MySQL is installed through Homebrew and running locally, this project expects:
+- [https://nodejs.org/](https://nodejs.org/)
 
-- MySQL socket: `/tmp/mysql.sock`
-- database name: `dorotracker`
-- user: `root` unless changed in environment variables
+### 2. Install MySQL
 
-On Windows, the normal local setup is:
+Install MySQL Community Server or MySQL Installer from:
 
-- MySQL host: `127.0.0.1`
-- MySQL port: `3306`
-- database name: `dorotracker`
+- [https://dev.mysql.com/downloads/](https://dev.mysql.com/downloads/)
 
-## Quick note
+Make sure the MySQL server is actually running after installation.
+
+### 3. Download the project
+
+Either:
+
+- download the ZIP from GitHub and extract it
+- or clone it with Git:
+
+```bash
+git clone https://github.com/kamenran/Dorotracker.git
+cd Dorotracker
+git checkout kamran-feature
+```
+
+### 4. Install project dependencies
+
+In Command Prompt or PowerShell, inside the project folder, run:
+
+```bash
+npm install
+```
+
+### 5. Create the database and tables
+
+If MySQL is on your PATH, run:
+
+```bash
+mysql -u root -p < database/schema.sql
+```
+
+If `mysql` is not recognized, open the MySQL Command Line Client or use the full path to `mysql.exe`.
+
+### 6. Start the app
+
+You can either double click:
+
+- `WINDOWS DOUBLE CLICK.bat`
+
+Or run:
+
+```bash
+node server/index.js
+```
+
+### 7. Open the site
+
+Go to:
+
+```text
+http://127.0.0.1:8000
+```
+
+## What the project expects
+
+The local development setup assumes:
+
+- MySQL database name: `dorotracker`
+- MySQL user: `root` unless changed in environment variables
+- Windows MySQL host: `127.0.0.1`
+- Windows MySQL port: `3306`
+- Mac Homebrew MySQL socket: `/tmp/mysql.sock`
+
+## Common problems
+
+### `npm: command not found`
+
+Node.js is not installed correctly. Reinstall Node.js and reopen Terminal or Command Prompt.
+
+### `mysql: command not found`
+
+MySQL is not installed correctly, or its command line tools are not on your PATH.
+
+### `Can't connect to MySQL server`
+
+MySQL is installed, but the MySQL server is not running yet.
+
+On Mac, try:
+
+```bash
+brew services start mysql
+```
+
+On Windows, start the MySQL service from Services or MySQL Installer.
+
+### The site opens but buttons do nothing
+
+Usually this means the backend is not running or MySQL is not connected correctly.
+
+### Port `8000` already in use
+
+Another copy of the app is already running. Close the old one first, then start it again.
+
+## Quick summary
+
+For a fresh machine, the full local setup is:
+
+1. Install Node.js
+2. Install MySQL
+3. Start MySQL
+4. Download the repo
+5. Run `npm install`
+6. Run the schema file
+7. Start the app
+8. Open `http://127.0.0.1:8000`
+
+## Final note
 
 For local development, every group member still needs their own MySQL installation.
 
-For a final demo where users should not install MySQL locally, the better approach is to deploy the app online with a cloud-hosted MySQL database.
+For a final demo where users should not install anything locally, the better approach is to deploy the app online with a cloud-hosted MySQL database.
