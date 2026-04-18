@@ -1,3 +1,28 @@
+import { authenticatedFetch } from "../auth/index.js";
+
+function formatFriendlyDate(dateString) {
+  return new Date(`${dateString}T12:00:00`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatPomodoroLabel(minutes, pomodoros) {
+  const wholePomodoros = Math.floor(minutes / 25);
+  const remainder = minutes % 25;
+
+  if (remainder === 0) {
+    return `${pomodoros} ${pomodoros === 1 ? "Pomodoro" : "Pomodoros"}`;
+  }
+
+  if (wholePomodoros <= 0) {
+    return `${minutes} min focus block`;
+  }
+
+  return `${wholePomodoros} ${wholePomodoros === 1 ? "Pomodoro" : "Pomodoros"} + ${remainder} min`;
+}
+
 function renderResults(target, result) {
   const warningMarkup = result.warnings.length
     ? `<div class="scheduler-warnings">${result.warnings
@@ -5,34 +30,82 @@ function renderResults(target, result) {
         .join("")}</div>`
     : `<p class="scheduler-ok">No overload warnings.</p>`;
 
-  const blockMarkup = result.blocks.length
-    ? result.blocks
+  const blocksByDate = result.blocks.reduce((groups, block) => {
+    if (!groups[block.scheduledDate]) {
+      groups[block.scheduledDate] = [];
+    }
+
+    groups[block.scheduledDate].push(block);
+    return groups;
+  }, {});
+
+  const dayMarkup = result.blocks.length
+    ? Object.entries(blocksByDate)
+        .sort(([left], [right]) => left.localeCompare(right))
         .map(
-          (block) => `
-            <div class="scheduler-block">
-              <strong>${block.assignmentTitle}</strong>
-              <span>${block.scheduledDate}</span>
-              <span>${block.minutes} min</span>
-              <span>${block.pomodoros} pomodoros</span>
-            </div>
+          ([date, blocks]) => `
+            <article class="scheduler-day-card">
+              <div class="scheduler-day-header">
+                <p>${formatFriendlyDate(date)}</p>
+                <span>${blocks.reduce((total, block) => total + block.minutes, 0)} min planned</span>
+              </div>
+              <div class="scheduler-day-list">
+                ${blocks
+                  .map(
+                    (block) => `
+                      <div class="scheduler-block">
+                        <div class="scheduler-block-main">
+                          <strong>${block.assignmentTitle}</strong>
+                          <span>${block.minutes} min</span>
+                        </div>
+                        <div class="scheduler-block-meta">
+                          <span>${formatPomodoroLabel(block.minutes, block.pomodoros)}</span>
+                          <span>Due ${formatFriendlyDate(block.dueDate)}</span>
+                        </div>
+                      </div>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </article>
           `,
         )
         .join("")
     : `<p class="scheduler-empty">No study blocks generated yet.</p>`;
 
   target.innerHTML = `
-    <div class="scheduler-summary">
-      <div><strong>${result.summary.assignmentCount}</strong><span>assignments</span></div>
-      <div><strong>${result.summary.totalMinutes}</strong><span>minutes</span></div>
-      <div><strong>${result.summary.overloadedAssignments}</strong><span>warnings</span></div>
+    <div class="scheduler-results-shell">
+      <div class="scheduler-summary">
+        <div><strong>${result.summary.assignmentCount}</strong><span>assignments</span></div>
+        <div><strong>${result.summary.totalMinutes}</strong><span>minutes planned</span></div>
+        <div><strong>${result.summary.overloadedAssignments}</strong><span>warnings</span></div>
+      </div>
+      ${warningMarkup}
+      <div class="scheduler-results-header">
+        <div>
+          <p class="feature-label">Study plan</p>
+          <h3>Your schedule at a glance</h3>
+        </div>
+        <span class="scheduler-results-caption">Grouped by day so it feels like a real plan, not a raw dump.</span>
+      </div>
+      <div class="scheduler-results-board">${dayMarkup}</div>
     </div>
-    ${warningMarkup}
-    <div class="scheduler-results-list">${blockMarkup}</div>
   `;
 }
 
 function renderError(target, message) {
   target.innerHTML = `<p class="scheduler-empty">${message}</p>`;
+}
+
+function renderSignedOutState(target) {
+  target.innerHTML = `
+    <div class="scheduler-gate-card">
+      <p class="feature-label">Sign in required</p>
+      <h3>Open the Account page before using the planner.</h3>
+      <p>Your assignments and schedules are now tied to a user account, so you need to register or sign in first.</p>
+      <a class="hero-button" href="#auth">Go to Account</a>
+    </div>
+  `;
 }
 
 export function mountSchedulerFeature(container) {
@@ -135,7 +208,7 @@ export function mountSchedulerFeature(container) {
   const rescheduleMinutes = container.querySelector("#reschedule-minutes");
 
   async function postScheduler(path, payload) {
-    const response = await fetch(path, {
+    const response = await authenticatedFetch(path, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -146,6 +219,23 @@ export function mountSchedulerFeature(container) {
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || "Scheduler request failed.");
+    }
+
+    return data;
+  }
+
+  async function fetchAssignments() {
+    const response = await authenticatedFetch("/api/assignments");
+    if (response.status === 401) {
+      schedulerAssignments.length = 0;
+      renderAssignmentList();
+      renderSignedOutState(output);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Could not load assignments.");
     }
 
     return data;
@@ -235,7 +325,7 @@ export function mountSchedulerFeature(container) {
       assignmentForm.elements.namedItem("estimatedMinutes").value = "120";
       assignmentForm.elements.namedItem("priority").value = "3";
       renderAssignmentList();
-      renderError(output, `Added "${assignment.title}". You can add more assignments or generate a schedule now.`);
+      renderError(output, `Added "${assignment.title}". You can add more assignments or generate your study plan now.`);
     } catch (error) {
       renderError(output, error.message);
     }
@@ -258,7 +348,7 @@ export function mountSchedulerFeature(container) {
     }
 
     try {
-      const result = await fetch(`/api/assignments/${assignment.id}`, {
+      const result = await authenticatedFetch(`/api/assignments/${assignment.id}`, {
         method: "DELETE",
       });
       const data = await result.json();
@@ -276,7 +366,7 @@ export function mountSchedulerFeature(container) {
     event.preventDefault();
     const assignments = readAssignments();
     if (!assignments.length) {
-      output.innerHTML = `<p class="scheduler-empty">Add at least one assignment before generating a schedule.</p>`;
+      renderError(output, "Add at least one assignment before generating a schedule.");
       return;
     }
 
@@ -293,6 +383,7 @@ export function mountSchedulerFeature(container) {
   rescheduleButton.addEventListener("click", async () => {
     const assignments = readAssignments();
     if (!assignments.length) {
+      renderError(output, "Add at least one assignment before rescheduling.");
       return;
     }
 
@@ -315,7 +406,7 @@ export function mountSchedulerFeature(container) {
 
   clearButton.addEventListener("click", async () => {
     try {
-      const response = await fetch("/api/assignments", { method: "DELETE" });
+      const response = await authenticatedFetch("/api/assignments", { method: "DELETE" });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Could not clear assignments.");
@@ -326,13 +417,15 @@ export function mountSchedulerFeature(container) {
     }
   });
 
-  fetch("/api/assignments")
-    .then((response) => response.json())
+  fetchAssignments()
     .then((data) => {
+      if (!data) {
+        return;
+      }
       schedulerAssignments.splice(0, schedulerAssignments.length, ...(data.assignments || []));
       renderAssignmentList();
       if (!schedulerAssignments.length) {
-        output.innerHTML = `<p class="scheduler-empty">Add at least one assignment before generating a schedule.</p>`;
+        renderError(output, "Add at least one assignment before generating a schedule.");
         return;
       }
       return postScheduler("/api/scheduler/generate", {

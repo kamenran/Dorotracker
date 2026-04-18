@@ -2,13 +2,6 @@
 
 DoroTracker is a Node.js prototype for assignment tracking, schedule generation, schedule regeneration, and Pomodoro-oriented study planning.
 
-## Team split
-
-- `nathan-feature`: auth and accounts
-- `kelsey-feature`: assignment CRUD expansion
-- `kamran-feature`: scheduler and rescheduler
-- `beatrice-feature`: Pomodoro timer and progress UI
-
 ## What already works here
 
 This base is intentionally light outside of the scheduler lane, but Kamran's feature is wired end to end:

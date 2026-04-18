@@ -8,8 +8,12 @@ import {
   clearAssignments,
   createAssignment,
   deleteAssignment,
+  deleteSession,
   getDatabaseMode,
+  getSessionUser,
+  loginUser,
   listAssignments,
+  registerUser,
   saveSchedule,
   testConnection,
 } from "./db.js";
@@ -59,6 +63,26 @@ async function readJsonBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+function readSessionToken(request) {
+  const authorization = request.headers.authorization || "";
+  if (authorization.startsWith("Bearer ")) {
+    return authorization.slice("Bearer ".length).trim();
+  }
+
+  return request.headers["x-session-token"] || "";
+}
+
+async function requireUser(request, response) {
+  const token = readSessionToken(request);
+  const user = await getSessionUser(token);
+  if (!user) {
+    sendJson(response, 401, { error: "You need to sign in first." });
+    return null;
+  }
+
+  return { user, token };
+}
+
 function normalizeSchedulerPayload(body) {
   return {
     startDate: body.startDate,
@@ -96,44 +120,119 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/auth/register") {
+      const body = await readJsonBody(request);
+      if (!body.fullName || !body.email || !body.password || String(body.password).length < 8) {
+        sendJson(response, 400, { error: "Full name, email, and a password with at least 8 characters are required." });
+        return;
+      }
+
+      try {
+        const result = await registerUser({
+          fullName: String(body.fullName).trim(),
+          email: String(body.email).trim(),
+          password: String(body.password),
+        });
+        sendJson(response, 201, result);
+      } catch (error) {
+        if (String(error.message || "").includes("Duplicate entry")) {
+          sendJson(response, 400, { error: "That email is already registered." });
+          return;
+        }
+        throw error;
+      }
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/login") {
+      const body = await readJsonBody(request);
+      const result = await loginUser({
+        email: String(body.email || "").trim(),
+        password: String(body.password || ""),
+      });
+      sendJson(response, 200, result);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/auth/me") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      sendJson(response, 200, { user: auth.user });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/logout") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      await deleteSession(auth.token);
+      sendJson(response, 200, { success: true });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/assignments") {
-      sendJson(response, 200, { assignments: await listAssignments() });
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+      sendJson(response, 200, { assignments: await listAssignments(auth.user.id) });
       return;
     }
 
     if (request.method === "POST" && url.pathname === "/api/assignments") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
       const body = await readJsonBody(request);
-      const assignment = await createAssignment({
+      const assignment = await createAssignment(auth.user.id, {
         title: body.title,
         dueDate: body.dueDate,
         estimatedMinutes: Number(body.estimatedMinutes),
         priority: Number(body.priority || 3),
       });
-      sendJson(response, 201, { assignment, assignments: await listAssignments() });
+      sendJson(response, 201, { assignment, assignments: await listAssignments(auth.user.id) });
       return;
     }
 
     if (request.method === "DELETE" && url.pathname.startsWith("/api/assignments/")) {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
       const id = Number(url.pathname.split("/").pop());
-      await deleteAssignment(id);
-      sendJson(response, 200, { assignments: await listAssignments() });
+      await deleteAssignment(auth.user.id, id);
+      sendJson(response, 200, { assignments: await listAssignments(auth.user.id) });
       return;
     }
 
     if (request.method === "DELETE" && url.pathname === "/api/assignments") {
-      await clearAssignments();
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+      await clearAssignments(auth.user.id);
       sendJson(response, 200, { assignments: [] });
       return;
     }
 
     if (request.method === "POST" && url.pathname === "/api/scheduler/generate") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
       const body = await readJsonBody(request);
-      const assignments = await listAssignments();
+      const assignments = await listAssignments(auth.user.id);
       const result = generateSchedule({
         assignments,
         ...normalizeSchedulerPayload(body),
       });
-      await saveSchedule("generate", result.blocks.map((block) => {
+      await saveSchedule(auth.user.id, "generate", result.blocks.map((block) => {
         const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
         return {
           ...block,
@@ -145,11 +244,15 @@ const server = http.createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && url.pathname === "/api/scheduler/reschedule") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
       const body = await readJsonBody(request);
       if (body.completedAssignmentId && Number(body.completedMinutes || 0) > 0) {
-        await applyCompletion(body.completedAssignmentId, Number(body.completedMinutes));
+        await applyCompletion(auth.user.id, body.completedAssignmentId, Number(body.completedMinutes));
       }
-      const assignments = await listAssignments();
+      const assignments = await listAssignments(auth.user.id);
       const selectedAssignment = assignments.find(
         (assignment) => Number(assignment.id) === Number(body.completedAssignmentId || body.missedAssignmentId || 0),
       );
@@ -163,7 +266,7 @@ const server = http.createServer(async (request, response) => {
             missedAssignmentTitle:
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",
           });
-          await saveSchedule("reschedule", result.blocks.map((block) => {
+          await saveSchedule(auth.user.id, "reschedule", result.blocks.map((block) => {
             const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
             return {
               ...block,
