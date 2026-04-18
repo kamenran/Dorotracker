@@ -4,181 +4,45 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DoroTracker</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
-        <div>
-          <p class="eyebrow">DoroTracker Prototype</p>
-          <h1>Assignments, schedules, and Pomodoro sessions in one place.</h1>
-          <p class="hero-copy">
-            A basic sprint-ready version of the project with registration, assignment tracking,
-            schedule generation, rescheduling, and a study timer.
-          </p>
-        </div>
-        <div class="hero-card" id="session-panel">
-          <div id="auth-view">
-            <h2>Sign in</h2>
-            <form id="auth-form" class="stack">
-              <label>
-                <span>Name</span>
-                <input id="auth-name" type="text" placeholder="Only needed for register" />
-              </label>
-              <label>
-                <span>Email</span>
-                <input id="auth-email" type="email" required />
-              </label>
-              <label>
-                <span>Password</span>
-                <input id="auth-password" type="password" required />
-              </label>
-              <div class="button-row">
-                <button type="submit" data-mode="login">Login</button>
-                <button type="submit" data-mode="register" class="secondary">Register</button>
-              </div>
-            </form>
-          </div>
-          <div id="user-view" class="hidden">
-            <p class="signed-in-label">Signed in as</p>
-            <h2 id="user-name"></h2>
-            <p id="user-email"></p>
-            <button id="logout-button" class="secondary full-width">Logout</button>
-          </div>
-          <p id="status-message" class="status-message"></p>
-        </div>
+        <p class="eyebrow">DoroTracker</p>
+        <h1>Fresh team starter</h1>
+        <p class="hero-copy">
+          This reset branch gives each group member a clean area to build their assigned feature.
+        </p>
       </header>
 
-      <main id="app" class="hidden">
-        <section class="panel settings-panel">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Study Settings</p>
-              <h2>Scheduling preferences</h2>
-            </div>
-            <button id="refresh-button" class="secondary">Refresh schedule</button>
-          </div>
-          <form id="settings-form" class="settings-grid">
-            <label>
-              <span>Daily study limit</span>
-              <input id="daily-limit" type="number" min="30" step="15" />
-            </label>
-            <label>
-              <span>Minimum block</span>
-              <input id="minimum-block" type="number" min="15" step="5" />
-            </label>
-            <label>
-              <span>Pomodoro length</span>
-              <input id="pomodoro-length" type="number" min="5" step="5" />
-            </label>
-            <button type="submit">Save settings</button>
-          </form>
+      <main class="feature-grid">
+        <section class="feature-card" id="auth-card">
+          <p class="feature-label">Nathan</p>
+          <h2>Auth + Accounts</h2>
+          <p>Placeholder area for login, registration, profile, and account flows.</p>
         </section>
 
-        <section class="grid">
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Assignments</p>
-                <h2>Manage work</h2>
-              </div>
-            </div>
-            <form id="assignment-form" class="assignment-form">
-              <input id="assignment-id" type="hidden" />
-              <label>
-                <span>Title</span>
-                <input id="assignment-title" type="text" required />
-              </label>
-              <label>
-                <span>Course</span>
-                <input id="assignment-course" type="text" />
-              </label>
-              <label>
-                <span>Due date</span>
-                <input id="assignment-due-date" type="date" required />
-              </label>
-              <label>
-                <span>Estimated minutes</span>
-                <input id="assignment-estimated-minutes" type="number" min="30" step="15" required />
-              </label>
-              <label>
-                <span>Minutes completed</span>
-                <input id="assignment-minutes-completed" type="number" min="0" step="5" value="0" />
-              </label>
-              <label>
-                <span>Priority</span>
-                <select id="assignment-priority">
-                  <option value="5">5 - High</option>
-                  <option value="4">4</option>
-                  <option value="3" selected>3 - Normal</option>
-                  <option value="2">2</option>
-                  <option value="1">1 - Low</option>
-                </select>
-              </label>
-              <div class="button-row">
-                <button type="submit">Save assignment</button>
-                <button type="button" id="assignment-reset" class="secondary">Clear</button>
-              </div>
-            </form>
-            <div id="assignment-list" class="list"></div>
-          </section>
-
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Today</p>
-                <h2>Pomodoro timer</h2>
-              </div>
-            </div>
-            <div class="timer-card">
-              <p id="timer-assignment-label">Choose an assignment below to track a session.</p>
-              <div class="timer-display" id="timer-display">25:00</div>
-              <div class="button-row">
-                <button id="timer-start">Start</button>
-                <button id="timer-pause" class="secondary">Pause</button>
-                <button id="timer-reset" class="secondary">Reset</button>
-              </div>
-              <form id="study-log-form" class="stack">
-                <label>
-                  <span>Assignment</span>
-                  <select id="study-assignment"></select>
-                </label>
-                <label>
-                  <span>Minutes to log</span>
-                  <input id="study-minutes" type="number" min="5" step="5" />
-                </label>
-                <button type="submit">Log session and reschedule</button>
-              </form>
-            </div>
-            <div id="study-session-list" class="list compact-list"></div>
-          </section>
+        <section class="feature-card" id="assignments-card">
+          <p class="feature-label">Kelsey</p>
+          <h2>Assignment CRUD</h2>
+          <p>Placeholder area for creating, editing, deleting, and viewing assignments.</p>
         </section>
 
-        <section class="grid">
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Schedule</p>
-                <h2>Generated plan</h2>
-              </div>
-            </div>
-            <div id="schedule-summary" class="summary-strip"></div>
-            <div id="schedule-list" class="list"></div>
-          </section>
+        <section class="feature-card" id="scheduler-card">
+          <p class="feature-label">Kamran</p>
+          <h2>Scheduler / Rescheduler</h2>
+          <p>Placeholder area for schedule generation, redistribution, and warnings.</p>
+        </section>
 
-          <section class="panel">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Dashboard</p>
-                <h2>Quick stats</h2>
-              </div>
-            </div>
-            <div id="stats-grid" class="stats-grid"></div>
-          </section>
+        <section class="feature-card" id="timer-card">
+          <p class="feature-label">Beatrice</p>
+          <h2>Pomodoro + Progress</h2>
+          <p>Placeholder area for timer controls, session history, and progress visuals.</p>
         </section>
       </main>
     </div>
 
-    <script src="/app.js"></script>
+    <script type="module" src="./js/main.js"></script>
   </body>
 </html>
