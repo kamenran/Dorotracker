@@ -81,13 +81,6 @@ function renderResults(target, result) {
         <div><strong>${result.summary.overloadedAssignments}</strong><span>warnings</span></div>
       </div>
       ${warningMarkup}
-      <div class="scheduler-results-header">
-        <div>
-          <p class="feature-label">Study plan</p>
-          <h3>Your schedule at a glance</h3>
-        </div>
-        <span class="scheduler-results-caption">Grouped by day so it feels like a real plan, not a raw dump.</span>
-      </div>
       <div class="scheduler-results-board">${dayMarkup}</div>
     </div>
   `;
@@ -156,7 +149,6 @@ export function mountSchedulerFeature(container) {
 
         <div class="scheduler-action-row">
           <button type="submit">Generate schedule</button>
-          <button type="button" class="secondary" id="scheduler-refresh">Refresh</button>
         </div>
       </form>
       <div class="scheduler-reschedule-panel">
@@ -180,6 +172,16 @@ export function mountSchedulerFeature(container) {
         </div>
         <div class="scheduler-action-row">
           <button type="button" class="secondary" id="reschedule-button">Reschedule from update</button>
+        </div>
+      </div>
+      <div class="scheduler-results-header">
+        <div>
+          <p class="feature-label">Study plan</p>
+          <h3>Your schedule at a glance</h3>
+        </div>
+        <div class="scheduler-results-actions">
+          <span class="scheduler-results-caption">Grouped by day so it feels like a real plan, not a raw dump.</span>
+          <button type="button" class="secondary" id="scheduler-refresh">Refresh</button>
         </div>
       </div>
       <div class="scheduler-output" id="scheduler-output"></div>
@@ -351,6 +353,11 @@ export function mountSchedulerFeature(container) {
         missedAssignmentId: status === "missed" ? selectedId : 0,
         missedMinutes: status === "missed" ? minutes : 0,
       });
+      const refreshedAssignments = await fetchAssignments();
+      if (refreshedAssignments) {
+        schedulerAssignments.splice(0, schedulerAssignments.length, ...(refreshedAssignments.assignments || []));
+        renderAssignmentSummary();
+      }
       renderResults(output, result);
     } catch (error) {
       renderError(output, error.message);

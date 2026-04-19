@@ -23,6 +23,13 @@ function pomodoroCount(minutes, pomodoroLength) {
   return Math.max(Math.ceil(minutes / pomodoroLength), 1);
 }
 
+function getRemainingMinutes(assignment) {
+  return Math.max(
+    Number(assignment.estimatedMinutes || 0) - Number(assignment.minutesCompleted || 0),
+    0,
+  );
+}
+
 export function generateSchedule({
   assignments,
   startDate,
@@ -50,13 +57,38 @@ export function generateSchedule({
   const warnings = [];
 
   for (const assignment of sortedAssignments) {
-    let remainingMinutes = Number(assignment.estimatedMinutes);
+    let remainingMinutes = getRemainingMinutes(assignment);
+    let frontloadMinutes = Math.min(Number(assignment.frontloadMinutes || 0), remainingMinutes);
     const bufferedDeadline = parseDate(assignment.dueDate);
     bufferedDeadline.setDate(bufferedDeadline.getDate() - deadlineBufferDays);
 
     let availableDates = allDates.filter((date) => parseDate(date) <= bufferedDeadline);
     if (!availableDates.length) {
       availableDates = [startDate];
+    }
+
+    for (let index = 0; index < availableDates.length && frontloadMinutes > 0; index += 1) {
+      const date = availableDates[index];
+      const availableCapacity = capacityByDate[date] || 0;
+      const minutes = Math.min(frontloadMinutes, availableCapacity);
+
+      if (minutes <= 0) {
+        continue;
+      }
+
+      blocks.push({
+        assignmentTitle: assignment.title,
+        dueDate: assignment.dueDate,
+        scheduledDate: date,
+        minutes,
+        pomodoros: pomodoroCount(minutes, pomodoroLength),
+        priority: assignment.priority,
+        overdue: parseDate(date) > parseDate(assignment.dueDate),
+      });
+
+      capacityByDate[date] -= minutes;
+      remainingMinutes -= minutes;
+      frontloadMinutes -= minutes;
     }
 
     for (let index = 0; index < availableDates.length && remainingMinutes > 0; index += 1) {
@@ -120,8 +152,7 @@ export function reschedule({
   const normalizedMissedMinutes = Math.max(Number(missedMinutes) || 0, 0);
 
   const adjustedAssignments = assignments.map((assignment) => {
-    const currentMinutesCompleted = Number(assignment.minutesCompleted || 0);
-    const remainingMinutes = Math.max(Number(assignment.estimatedMinutes) - currentMinutesCompleted, 0);
+    const remainingMinutes = getRemainingMinutes(assignment);
     const extraMissedMinutes =
       missedAssignmentTitle && assignment.title === missedAssignmentTitle ? normalizedMissedMinutes : 0;
     const adjustedMinutes = remainingMinutes + extraMissedMinutes;
@@ -130,6 +161,8 @@ export function reschedule({
       ...assignment,
       estimatedMinutes: adjustedMinutes,
       minutesCompleted: 0,
+      frontloadMinutes:
+        missedAssignmentTitle && assignment.title === missedAssignmentTitle ? normalizedMissedMinutes : 0,
       priority:
         missedAssignmentTitle && assignment.title === missedAssignmentTitle
           ? Math.min(Number(assignment.priority) + 1, 5)
