@@ -23,6 +23,14 @@ function formatPomodoroLabel(minutes, pomodoros) {
   return `${wholePomodoros} ${wholePomodoros === 1 ? "Pomodoro" : "Pomodoros"} + ${remainder} min`;
 }
 
+function isAssignmentCompleted(assignment) {
+  return Number(assignment.minutesCompleted || 0) >= Number(assignment.estimatedMinutes || 0);
+}
+
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function renderResults(target, result) {
   const warningMarkup = result.warnings.length
     ? `<div class="scheduler-warnings">${result.warnings
@@ -107,6 +115,7 @@ export function mountSchedulerFeature(container) {
   }
 
   const schedulerAssignments = [];
+  const todayDateString = getTodayDateString();
 
   container.insertAdjacentHTML(
     "beforeend",
@@ -116,7 +125,7 @@ export function mountSchedulerFeature(container) {
           <p class="feature-label">Assignment source</p>
           <h3>Build your task list in Assignments, then plan it here.</h3>
           <p class="scheduler-source-copy">
-            This page reads your saved assignments from MySQL and turns them into a study plan. If you need to add,
+            This page reads your saved assignments and turns them into a study plan. If you need to add,
             edit, or delete work, use the Assignments page first.
           </p>
         </div>
@@ -132,7 +141,7 @@ export function mountSchedulerFeature(container) {
         </p>
         <label>
           <span>Start date</span>
-          <input name="startDate" type="date" value="2026-04-18" />
+          <input name="startDate" type="date" value="${todayDateString}" min="${todayDateString}" />
         </label>
         <label>
           <span>Daily study limit</span>
@@ -180,7 +189,7 @@ export function mountSchedulerFeature(container) {
           <h3>Your schedule at a glance</h3>
         </div>
         <div class="scheduler-results-actions">
-          <span class="scheduler-results-caption">Grouped by day so it feels like a real plan, not a raw dump.</span>
+          <span class="scheduler-results-caption">Grouped by day so it feels like a real plan &lt;3</span>
           <button type="button" class="secondary" id="scheduler-refresh">Refresh</button>
         </div>
       </div>
@@ -256,6 +265,8 @@ export function mountSchedulerFeature(container) {
   }
 
   function renderAssignmentSummary() {
+    const activeAssignments = schedulerAssignments.filter((assignment) => !isAssignmentCompleted(assignment));
+
     if (!schedulerAssignments.length) {
       assignmentSummary.innerHTML = `
         <div class="scheduler-empty">
@@ -266,16 +277,26 @@ export function mountSchedulerFeature(container) {
       return;
     }
 
+    if (!activeAssignments.length) {
+      assignmentSummary.innerHTML = `
+        <div class="scheduler-empty">
+          <p>All saved assignments are completed. Add a new assignment or update an existing one to build a fresh plan.</p>
+        </div>
+      `;
+      syncRescheduleAssignments([]);
+      return;
+    }
+
     assignmentSummary.innerHTML = `
       <div class="scheduler-assignment-summary-header">
         <div>
           <p class="feature-label">Planner input</p>
-          <h3>${schedulerAssignments.length} saved ${schedulerAssignments.length === 1 ? "assignment" : "assignments"}</h3>
+          <h3>${activeAssignments.length} active ${activeAssignments.length === 1 ? "assignment" : "assignments"}</h3>
         </div>
         <span class="scheduler-results-caption">These are the items the scheduler will use for generate and reschedule.</span>
       </div>
       <div class="scheduler-assignment-summary-grid">
-        ${schedulerAssignments
+        ${activeAssignments
           .map(
             (assignment) => `
               <article class="scheduler-assignment-chip">
@@ -291,7 +312,7 @@ export function mountSchedulerFeature(container) {
       </div>
     `;
 
-    syncRescheduleAssignments(schedulerAssignments);
+    syncRescheduleAssignments(activeAssignments);
   }
 
   function syncRescheduleAssignments(assignments) {
@@ -307,8 +328,11 @@ export function mountSchedulerFeature(container) {
 
   function readSettings() {
     const formData = new FormData(form);
+    const requestedStartDate = String(formData.get("startDate") || "");
+    const normalizedStartDate = requestedStartDate && requestedStartDate >= todayDateString ? requestedStartDate : todayDateString;
+
     return {
-      startDate: String(formData.get("startDate") || ""),
+      startDate: normalizedStartDate,
       dailyStudyLimit: Number(formData.get("dailyLimit") || 180),
       minimumBlock: Number(formData.get("minimumBlock") || 30),
       pomodoroLength: Number(formData.get("pomodoroLength") || 25),
