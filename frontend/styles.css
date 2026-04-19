@@ -468,6 +468,29 @@ body {
   background: #fff;
 }
 
+.scheduler-source-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.scheduler-source-actions button {
+  border: none;
+  border-radius: 999px;
+  padding: 0 20px;
+  min-height: 48px;
+  font-weight: 700;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.scheduler-source-actions .secondary {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .scheduler-source-card h3,
 .scheduler-assignment-summary-header h3 {
   margin: 0;

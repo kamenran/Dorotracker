@@ -363,7 +363,7 @@ async function saveSession(forceCompleted) {
 
   renderHistory(data.timer);
   if (timerState.mode === "focus" && timerState.assignmentId && timerState.autoApplyProgress && forceCompleted) {
-    setStatus("Completed session saved to MySQL and assignment progress updated.", "success");
+    setStatus("Completed session saved and assignment progress updated.", "success");
   } else {
     setStatus("Session saved to MySQL.", "success");
   }
