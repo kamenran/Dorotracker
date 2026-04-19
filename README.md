@@ -233,6 +233,6 @@ For a fresh machine, the full local setup is:
 
 ## Final note
 
-For local development, every group member still needs their own MySQL installation.
+For local development, each person still needs their own MySQL installation.
 
 For a final demo where users should not install anything locally, the better approach is to deploy the app online with a cloud-hosted MySQL database.
