@@ -105,15 +105,18 @@ export function mountAssignmentFeature(container) {
     }
 
     list.innerHTML = assignments
-      .map(
-        (assignment) => `
-          <article class="assignment-record-card">
+      .map((assignment) => {
+        const isCompleted = Number(assignment.minutesCompleted || 0) >= Number(assignment.estimatedMinutes || 0);
+
+        return `
+          <article class="assignment-record-card ${isCompleted ? "completed" : ""}">
             <div class="assignment-record-main">
               <div>
                 <p class="feature-label">Assignment</p>
                 <h4>${assignment.title}</h4>
               </div>
               <div class="assignment-record-badges">
+                ${isCompleted ? `<span class="assignment-status-badge">Completed</span>` : ""}
                 <span>Due ${assignment.dueDate}</span>
                 <span>${assignment.estimatedMinutes} min</span>
                 <span>${assignment.minutesCompleted} min done</span>
@@ -122,12 +125,12 @@ export function mountAssignmentFeature(container) {
             </div>
             <div class="assignment-record-actions">
               <button type="button" class="secondary assignment-edit" data-id="${assignment.id}">Edit</button>
-              <button type="button" class="secondary assignment-progress" data-id="${assignment.id}">+25 min</button>
+              <button type="button" class="secondary assignment-progress" data-id="${assignment.id}" ${isCompleted ? "disabled" : ""}>+25 min</button>
               <button type="button" class="secondary assignment-delete" data-id="${assignment.id}">Delete</button>
             </div>
           </article>
-        `,
-      )
+        `;
+      })
       .join("");
   }
 
