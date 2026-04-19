@@ -115,10 +115,16 @@ export function reschedule({
   pomodoroLength,
   deadlineBufferDays = 1,
   missedAssignmentTitle = "",
+  missedMinutes = 0,
 }) {
+  const normalizedMissedMinutes = Math.max(Number(missedMinutes) || 0, 0);
+
   const adjustedAssignments = assignments.map((assignment) => {
     const currentMinutesCompleted = Number(assignment.minutesCompleted || 0);
-    const adjustedMinutes = Math.max(Number(assignment.estimatedMinutes) - currentMinutesCompleted, 0);
+    const remainingMinutes = Math.max(Number(assignment.estimatedMinutes) - currentMinutesCompleted, 0);
+    const extraMissedMinutes =
+      missedAssignmentTitle && assignment.title === missedAssignmentTitle ? normalizedMissedMinutes : 0;
+    const adjustedMinutes = remainingMinutes + extraMissedMinutes;
 
     return {
       ...assignment,
