@@ -71,6 +71,9 @@ function pageFrame(title, description, route, content = "") {
 }
 
 function renderHomePage(app) {
+  const firstName = getStoredFirstName();
+  const plannerTitle = firstName ? `${firstName}'s Planner` : "Your Planner";
+
   app.innerHTML = `
     <section class="home-hero">
       <div class="home-copy">
@@ -87,10 +90,8 @@ function renderHomePage(app) {
         <div class="spotlight-card">
           <p class="feature-label">Dashboard</p>
           <div id="home-dashboard">
-            <h2>Your planning space, cleaned up.</h2>
-            <p>
-              Separate pages keep the workflow intuitive, while the scheduler stays focused on building and rebuilding your study plan.
-            </p>
+            <h2>${plannerTitle}</h2>
+            <p>Loading your latest planner details...</p>
           </div>
         </div>
       </div>
