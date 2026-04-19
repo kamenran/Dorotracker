@@ -73,9 +73,6 @@ function renderHomePage(app) {
       <div class="home-spotlight">
         <div class="spotlight-card">
           <p class="feature-label">Brand and dashboard</p>
-          <div class="spotlight-logo-wrap">
-            <img class="hero-logo-image" src="./assets/dorotracker-logo.png" alt="DoroTracker logo" />
-          </div>
           <div id="home-dashboard">
             <h2>Your planning space, cleaned up.</h2>
             <p>
