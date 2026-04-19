@@ -482,6 +482,7 @@ body {
 }
 
 .scheduler-helper {
+  grid-column: 1 / -1;
   margin: 0;
   padding: 12px 14px;
   border-radius: 16px;
@@ -792,7 +793,8 @@ body {
 }
 
 .assignments-action-row button,
-.assignment-record-actions button {
+.assignment-record-actions button,
+.assignments-form-header button {
   border: none;
   border-radius: 999px;
   padding: 12px 16px;
@@ -800,6 +802,8 @@ body {
   color: white;
   font-weight: 700;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .assignments-action-row .secondary,
