@@ -47,6 +47,14 @@ function sendFile(response, filePath) {
       ? "text/css; charset=utf-8"
       : extension === ".js"
         ? "application/javascript; charset=utf-8"
+        : extension === ".png"
+          ? "image/png"
+          : extension === ".jpg" || extension === ".jpeg"
+            ? "image/jpeg"
+            : extension === ".svg"
+              ? "image/svg+xml"
+              : extension === ".ico"
+                ? "image/x-icon"
         : "text/html; charset=utf-8";
 
   response.writeHead(200, {

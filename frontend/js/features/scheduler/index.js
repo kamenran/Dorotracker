@@ -9,18 +9,11 @@ function formatFriendlyDate(dateString) {
 }
 
 function formatPomodoroLabel(minutes, pomodoros) {
-  const wholePomodoros = Math.floor(minutes / 25);
-  const remainder = minutes % 25;
-
-  if (remainder === 0) {
-    return `${pomodoros} ${pomodoros === 1 ? "Pomodoro" : "Pomodoros"}`;
-  }
-
-  if (wholePomodoros <= 0) {
+  if (Number(pomodoros || 0) <= 0) {
     return `${minutes} min focus block`;
   }
 
-  return `${wholePomodoros} ${wholePomodoros === 1 ? "Pomodoro" : "Pomodoros"} + ${remainder} min`;
+  return `${pomodoros} ${pomodoros === 1 ? "Pomodoro" : "Pomodoros"}`;
 }
 
 function isAssignmentCompleted(assignment) {
@@ -29,6 +22,14 @@ function isAssignmentCompleted(assignment) {
 
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function summarizeBlocks(blocks) {
+  return {
+    assignmentCount: new Set(blocks.map((block) => block.assignmentTitle)).size,
+    totalMinutes: blocks.reduce((total, block) => total + Number(block.minutes || 0), 0),
+    overloadedAssignments: blocks.filter((block) => block.overdue).length,
+  };
 }
 
 function renderResults(target, result) {
@@ -227,7 +228,7 @@ export function mountSchedulerFeature(container) {
     const response = await authenticatedFetch("/api/assignments");
     if (response.status === 401) {
       schedulerAssignments.length = 0;
-      renderAssignmentList();
+      renderAssignmentSummary();
       renderSignedOutState(output);
       return null;
     }
@@ -238,6 +239,23 @@ export function mountSchedulerFeature(container) {
     }
 
     return data;
+  }
+
+  async function fetchLatestSchedule() {
+    const response = await authenticatedFetch("/api/scheduler/latest");
+    if (response.status === 401) {
+      schedulerAssignments.length = 0;
+      renderAssignmentSummary();
+      renderSignedOutState(output);
+      return null;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Could not load the latest schedule.");
+    }
+
+    return data.blocks || [];
   }
 
   function readAssignments() {
@@ -258,10 +276,17 @@ export function mountSchedulerFeature(container) {
       return;
     }
 
-    const result = await postScheduler("/api/scheduler/generate", {
-      ...readSettings(),
+    const latestBlocks = await fetchLatestSchedule();
+    if (!latestBlocks || !latestBlocks.length) {
+      renderError(output, "Generate a schedule to see your latest study plan.");
+      return;
+    }
+
+    renderResults(output, {
+      blocks: latestBlocks,
+      warnings: [],
+      summary: summarizeBlocks(latestBlocks),
     });
-    renderResults(output, result);
   }
 
   function renderAssignmentSummary() {
