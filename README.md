@@ -117,10 +117,6 @@ mysql -u root < database/schema.sql
 ./scripts/start_app.sh
 ```
 
-Or double click:
-
-- [MAC DOUBLE CLICK.command](/Users/kamraneisenberg/Documents/Dorotracker/MAC%20DOUBLE%20CLICK.command)
-
 8. Open:
 
 ```text
@@ -156,10 +152,6 @@ mysql -u root -p < database/schema.sql
 ```bash
 node server/index.js
 ```
-
-Or double click:
-
-- `WINDOWS DOUBLE CLICK.bat`
 
 7. Open:
 
