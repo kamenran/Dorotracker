@@ -30,6 +30,22 @@ function getRemainingMinutes(assignment) {
   );
 }
 
+function formatAssignmentList(items) {
+  if (!items.length) {
+    return "";
+  }
+
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
 export function generateSchedule({
   assignments,
   startDate,
@@ -54,7 +70,7 @@ export function generateSchedule({
   const capacityByDate = Object.fromEntries(allDates.map((date) => [date, dailyStudyLimit]));
 
   const blocks = [];
-  const warnings = [];
+  const overloadedAssignments = [];
   let activeAssignmentCount = 0;
 
   for (const assignment of sortedAssignments) {
@@ -121,11 +137,24 @@ export function generateSchedule({
     }
 
     if (remainingMinutes > 0) {
-      warnings.push(
-        `${assignment.title} could not fully fit before its deadline. ${remainingMinutes} minute(s) remain unscheduled.`,
-      );
+      overloadedAssignments.push({
+        title: assignment.title,
+        remainingMinutes,
+      });
     }
   }
+
+  const warnings = overloadedAssignments.length
+    ? [
+        overloadedAssignments.length === 1
+          ? `${overloadedAssignments[0].title} could not fully fit before its deadline. ${overloadedAssignments[0].remainingMinutes} minute(s) remain unscheduled.`
+          : `${formatAssignmentList(
+              overloadedAssignments.map(
+                (assignment) => `${assignment.title} (${assignment.remainingMinutes} min remaining)`,
+              ),
+            )} could not fully fit before their deadlines.`,
+      ]
+    : [];
 
   return {
     blocks: blocks.sort((left, right) => {
@@ -138,7 +167,7 @@ export function generateSchedule({
     summary: {
       assignmentCount: activeAssignmentCount,
       totalMinutes: blocks.reduce((total, block) => total + block.minutes, 0),
-      overloadedAssignments: warnings.length,
+      overloadedAssignments: overloadedAssignments.length,
     },
   };
 }
@@ -157,16 +186,12 @@ export function reschedule({
 
   const adjustedAssignments = assignments.map((assignment) => {
     const remainingMinutes = getRemainingMinutes(assignment);
-    const extraMissedMinutes =
+    const frontloadMinutes =
       missedAssignmentTitle && assignment.title === missedAssignmentTitle ? normalizedMissedMinutes : 0;
-    const adjustedMinutes = remainingMinutes + extraMissedMinutes;
 
     return {
       ...assignment,
-      estimatedMinutes: adjustedMinutes,
-      minutesCompleted: 0,
-      frontloadMinutes:
-        missedAssignmentTitle && assignment.title === missedAssignmentTitle ? normalizedMissedMinutes : 0,
+      frontloadMinutes: Math.min(frontloadMinutes, remainingMinutes),
       priority:
         missedAssignmentTitle && assignment.title === missedAssignmentTitle
           ? Math.min(Number(assignment.priority) + 1, 5)

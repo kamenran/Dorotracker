@@ -67,7 +67,7 @@ function formatSessionLabel(type) {
 }
 
 function formatTimestamp(value) {
-  return new Date(value.replace(" ", "T")).toLocaleString("en-US", {
+  return new Date(`${value.replace(" ", "T")}Z`).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
