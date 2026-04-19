@@ -1,17 +1,15 @@
 # DoroTracker
 
-DoroTracker is a study planning prototype that combines assignment tracking, automated schedule generation, schedule regeneration, and Pomodoro-based study sessions in a single web application.
+DoroTracker is a study planning application that combines assignment tracking, automated schedule generation, schedule regeneration, and Pomodoro-based study sessions in a single web application.
 
-The prototype demonstrates a usable application with real database-backed functionality, including user accounts, assignment CRUD operations, saved schedules, and tracked study sessions.
+The project demonstrates a usable application with real database-backed functionality, including user accounts, assignment CRUD operations, saved schedules, and tracked study sessions.
 
 ## Access
 
-- Live application: `[Add Railway URL before submission]`
+- Live application: [https://dorotracker-production.up.railway.app/#home](https://dorotracker-production.up.railway.app/#home)
 - GitHub repository: [https://github.com/kamenran/Dorotracker](https://github.com/kamenran/Dorotracker)
 
-## Project Scope
-
-The current prototype includes:
+## Features
 
 - user registration and login with hashed passwords
 - assignment create, read, update, and delete operations
@@ -69,7 +67,7 @@ Verified local run outline:
 
 1. Clone the repository
 2. Install dependencies with `npm install`
-3. Run [database/schema.sql](/Users/kamraneisenberg/Documents/Dorotracker/database/schema.sql) in a local MySQL database named `dorotracker`
+3. Run [database/schema.sql](/Dorotracker/database/schema.sql) in a local MySQL database named `dorotracker`
 4. Configure environment variables so the app points to local MySQL rather than the hosted database
 5. Start the server with `npm start`
 6. Open `http://127.0.0.1:8000`
