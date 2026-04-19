@@ -127,7 +127,10 @@ export function mountSchedulerFeature(container) {
             edit, or delete work, use the Assignments page first.
           </p>
         </div>
-        <a class="hero-button" href="#assignments">Open Assignments</a>
+        <div class="scheduler-source-actions">
+          <a class="hero-button" href="#assignments">Open Assignments</a>
+          <button type="button" class="secondary" id="scheduler-refresh">Refresh</button>
+        </div>
       </section>
       <div class="scheduler-assignment-summary" id="scheduler-assignment-summary"></div>
       <form class="scheduler-form" id="scheduler-form">
@@ -186,6 +189,7 @@ export function mountSchedulerFeature(container) {
   const assignmentSummary = container.querySelector("#scheduler-assignment-summary");
   const form = container.querySelector("#scheduler-form");
   const output = container.querySelector("#scheduler-output");
+  const refreshButton = container.querySelector("#scheduler-refresh");
   const rescheduleButton = container.querySelector("#reschedule-button");
   const rescheduleAssignment = container.querySelector("#reschedule-assignment");
   const rescheduleStatus = container.querySelector("#reschedule-status");
@@ -227,6 +231,26 @@ export function mountSchedulerFeature(container) {
 
   function readAssignments() {
     return [...schedulerAssignments];
+  }
+
+  async function refreshPlanner() {
+    const data = await fetchAssignments();
+    if (!data) {
+      return;
+    }
+
+    schedulerAssignments.splice(0, schedulerAssignments.length, ...(data.assignments || []));
+    renderAssignmentSummary();
+
+    if (!schedulerAssignments.length) {
+      renderError(output, "Add at least one assignment on the Assignments page before generating a schedule.");
+      return;
+    }
+
+    const result = await postScheduler("/api/scheduler/generate", {
+      ...readSettings(),
+    });
+    renderResults(output, result);
   }
 
   function renderAssignmentSummary() {
@@ -332,22 +356,15 @@ export function mountSchedulerFeature(container) {
     }
   });
 
-  fetchAssignments()
-    .then((data) => {
-      if (!data) {
-        return;
-      }
-      schedulerAssignments.splice(0, schedulerAssignments.length, ...(data.assignments || []));
-      renderAssignmentSummary();
-      if (!schedulerAssignments.length) {
-        renderError(output, "Add at least one assignment on the Assignments page before generating a schedule.");
-        return;
-      }
-      return postScheduler("/api/scheduler/generate", {
-        ...readSettings(),
-      }).then((result) => renderResults(output, result));
-    })
-    .catch((error) => {
-      output.innerHTML = `<p class="scheduler-empty">${error.message}</p>`;
-    });
+  refreshButton.addEventListener("click", async () => {
+    try {
+      await refreshPlanner();
+    } catch (error) {
+      renderError(output, error.message);
+    }
+  });
+
+  refreshPlanner().catch((error) => {
+    output.innerHTML = `<p class="scheduler-empty">${error.message}</p>`;
+  });
 }
