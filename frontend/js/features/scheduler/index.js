@@ -349,6 +349,7 @@ export function mountSchedulerFeature(container) {
         completedAssignmentId: status === "completed" ? selectedId : 0,
         completedMinutes: status === "completed" ? minutes : 0,
         missedAssignmentId: status === "missed" ? selectedId : 0,
+        missedMinutes: status === "missed" ? minutes : 0,
       });
       renderResults(output, result);
     } catch (error) {

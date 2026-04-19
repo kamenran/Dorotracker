@@ -386,6 +386,7 @@ const server = http.createServer(async (request, response) => {
             ...normalizeSchedulerPayload(body),
             missedAssignmentTitle:
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",
+            missedMinutes: body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0,
           });
           await saveSchedule(auth.user.id, "reschedule", result.blocks.map((block) => {
             const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
