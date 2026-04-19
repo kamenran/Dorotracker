@@ -52,3 +52,17 @@ CREATE TABLE IF NOT EXISTS schedule_blocks (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_schedule_run FOREIGN KEY (run_id) REFERENCES schedule_runs(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS study_sessions (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  assignment_id INT NULL,
+  assignment_title VARCHAR(255) NULL,
+  session_type ENUM('focus', 'short_break', 'long_break') NOT NULL DEFAULT 'focus',
+  planned_minutes INT NOT NULL,
+  actual_minutes INT NOT NULL,
+  completed TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_study_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_study_session_assignment FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE SET NULL
+);

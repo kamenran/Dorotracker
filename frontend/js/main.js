@@ -1,5 +1,6 @@
 import { mountAuthFeature } from "./features/auth/index.js";
 import { mountAssignmentFeature } from "./features/assignments/index.js";
+import { authenticatedFetch } from "./features/auth/index.js";
 import { mountSchedulerFeature } from "./features/scheduler/index.js";
 import { mountTimerFeature } from "./features/timer/index.js";
 
@@ -11,6 +12,8 @@ const routes = {
   auth: renderAuthPage,
 };
 
+let timeIntervalId = null;
+
 function featureCard(route, title, description) {
   return `
     <a class="feature-launch-card" href="#${route}">
@@ -21,10 +24,26 @@ function featureCard(route, title, description) {
   `;
 }
 
+function cloudMascot(label = "Doro cloud") {
+  return `
+    <div class="cloud-mascot" aria-label="${label}" role="img">
+      <div class="cloud-mascot-body">
+        <span class="cloud-eye left"></span>
+        <span class="cloud-eye right"></span>
+        <span class="cloud-blush left"></span>
+        <span class="cloud-blush right"></span>
+        <span class="cloud-smile"></span>
+      </div>
+      <div class="cloud-sparkle one"></div>
+      <div class="cloud-sparkle two"></div>
+      <div class="cloud-sparkle three"></div>
+    </div>
+  `;
+}
+
 function pageFrame(title, description, route, content = "") {
   return `
     <section class="page-view">
-      <a class="page-back-link" href="#home">Back to home</a>
       <header class="page-hero">
         <p class="feature-label">${route}</p>
         <h1>${title}</h1>
@@ -42,9 +61,9 @@ function renderHomePage(app) {
     <section class="home-hero">
       <div class="home-copy">
         <p class="eyebrow">Study planner</p>
-        <h1>Plan your workload with less chaos.</h1>
+        <h1>A calmer way to plan, study, and adjust.</h1>
         <p class="hero-copy">
-          DoroTracker brings assignments, study sessions, rescheduling, and Pomodoro-style planning into one calmer workflow.
+          DoroTracker combines assignment tracking, study scheduling, rescheduling, and Pomodoro flow in one minimal workspace.
         </p>
         <div class="home-actions">
           <a class="hero-button" href="#scheduler">Open Scheduler</a>
@@ -53,22 +72,22 @@ function renderHomePage(app) {
       </div>
       <div class="home-spotlight">
         <div class="spotlight-card">
-          <p class="feature-label">Today</p>
-          <h2>Build a schedule that actually looks usable.</h2>
-          <p>
-            Separate pages keep the experience clean, and the scheduler page focuses fully on adding assignments and rebuilding your plan.
-          </p>
+          <p class="feature-label">Brand and dashboard</p>
+          <div class="spotlight-logo-wrap">
+            <img class="hero-logo-image" src="./assets/dorotracker-logo.png" alt="DoroTracker logo" />
+          </div>
+          <div id="home-dashboard">
+            <h2>Your planning space, cleaned up.</h2>
+            <p>
+              Separate pages keep the workflow intuitive, while the scheduler stays focused on building and rebuilding your study plan.
+            </p>
+          </div>
         </div>
       </div>
     </section>
-
-    <section class="feature-launch-grid">
-      ${featureCard("scheduler", "Scheduler / Rescheduler", "Generate a day-by-day study plan, then rebuild it after completed or missed work.")}
-      ${featureCard("assignments", "Assignments", "Dedicated area for assignment management and future CRUD expansion.")}
-      ${featureCard("timer", "Pomodoro + Progress", "Separate timer page for future focus sessions, progress history, and study tracking.")}
-      ${featureCard("auth", "Account", "Account page reserved for sign in, registration, and user settings.")}
-    </section>
   `;
+
+  loadHomeDashboard();
 }
 
 function renderSchedulerPage(app) {
@@ -94,7 +113,7 @@ function renderAssignmentsPage(app) {
 function renderTimerPage(app) {
   app.innerHTML = pageFrame(
     "Pomodoro and Progress",
-    "This page is reserved for timer controls, session tracking, and progress visuals.",
+    "Run focus and break sessions, save study history to MySQL, and make the app feel like your actual study companion.",
     "pomodoro",
   );
 
@@ -118,5 +137,97 @@ function renderRoute() {
   render(app);
 }
 
+function updateClock() {
+  const timeNode = document.getElementById("site-time");
+  const dateNode = document.getElementById("site-date");
+  if (!timeNode || !dateNode) {
+    return;
+  }
+
+  const now = new Date();
+  timeNode.textContent = now.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  dateNode.textContent = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function mountClock() {
+  updateClock();
+  if (timeIntervalId) {
+    window.clearInterval(timeIntervalId);
+  }
+  timeIntervalId = window.setInterval(updateClock, 1000);
+}
+
+async function loadHomeDashboard() {
+  const dashboard = document.getElementById("home-dashboard");
+  if (!dashboard) {
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch("/api/dashboard");
+    if (response.status === 401) {
+      dashboard.innerHTML = `
+        <h2>Sign in to load your live dashboard.</h2>
+        <p>Once you sign in, this homepage shows your assignment totals, completed minutes, and today's planned study time.</p>
+      `;
+      return;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Could not load dashboard.");
+    }
+
+    dashboard.innerHTML = `
+      <h2>Your planner snapshot</h2>
+      <div class="home-dashboard-grid">
+        <div class="home-stat-card">
+          <strong>${data.summary.assignmentCount}</strong>
+          <span>assignments</span>
+        </div>
+        <div class="home-stat-card">
+          <strong>${data.summary.totalCompletedMinutes}</strong>
+          <span>minutes completed</span>
+        </div>
+        <div class="home-stat-card">
+          <strong>${data.summary.todayStudyMinutes}</strong>
+          <span>minutes planned today</span>
+        </div>
+      </div>
+      <div class="home-dashboard-list">
+        <h3>Upcoming assignments</h3>
+        ${
+          data.upcomingAssignments.length
+            ? data.upcomingAssignments
+                .map(
+                  (assignment) => `
+                    <div class="home-dashboard-row">
+                      <strong>${assignment.title}</strong>
+                      <span>Due ${assignment.dueDate}</span>
+                      <span>${assignment.estimatedMinutes} min</span>
+                    </div>
+                  `,
+                )
+                .join("")
+            : `<p>No assignments saved yet. Open the assignments or scheduler page to add one.</p>`
+        }
+      </div>
+    `;
+  } catch (error) {
+    dashboard.innerHTML = `
+      <h2>Dashboard unavailable</h2>
+      <p>${error.message}</p>
+    `;
+  }
+}
+
 window.addEventListener("hashchange", renderRoute);
+mountClock();
 renderRoute();

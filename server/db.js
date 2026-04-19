@@ -27,6 +27,37 @@ function mapAssignmentRow(row) {
   };
 }
 
+function mapScheduleBlockRow(row) {
+  return {
+    id: row.id,
+    runId: row.runId,
+    assignmentTitle: row.assignmentTitle,
+    dueDate: row.dueDate,
+    scheduledDate: row.scheduledDate,
+    minutes: row.minutes,
+    pomodoros: row.pomodoros,
+    priority: row.priority,
+    overdue: Boolean(row.overdue),
+  };
+}
+
+function mapStudySessionRow(row) {
+  return {
+    id: row.id,
+    assignmentId: row.assignmentId,
+    assignmentTitle: row.assignmentTitle,
+    sessionType: row.sessionType,
+    plannedMinutes: row.plannedMinutes,
+    actualMinutes: row.actualMinutes,
+    completed: Boolean(row.completed),
+    createdAt: row.createdAt,
+  };
+}
+
+function normalizeTitleForComparison(title) {
+  return String(title || "").trim().toLowerCase();
+}
+
 async function columnExists(tableName, columnName) {
   const [rows] = await pool.execute(
     `
@@ -61,6 +92,22 @@ async function ensureSchema() {
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       expires_at DATETIME NOT NULL,
       CONSTRAINT fk_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS study_sessions (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      assignment_id INT NULL,
+      assignment_title VARCHAR(255) NULL,
+      session_type ENUM('focus', 'short_break', 'long_break') NOT NULL DEFAULT 'focus',
+      planned_minutes INT NOT NULL,
+      actual_minutes INT NOT NULL,
+      completed TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_study_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      CONSTRAINT fk_study_session_assignment FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE SET NULL
     )
   `);
 
@@ -234,6 +281,21 @@ export async function listAssignments(userId) {
 
 export async function createAssignment(userId, assignment) {
   await ensureSchemaReady();
+  const [duplicates] = await pool.execute(
+    `
+      SELECT id
+      FROM assignments
+      WHERE user_id = ?
+        AND LOWER(TRIM(title)) = ?
+      LIMIT 1
+    `,
+    [userId, normalizeTitleForComparison(assignment.title)],
+  );
+
+  if (duplicates[0]) {
+    throw new Error("You already have an assignment with that name.");
+  }
+
   const [result] = await pool.execute(
     `
       INSERT INTO assignments (user_id, title, due_date, estimated_minutes, priority)
@@ -258,6 +320,59 @@ export async function createAssignment(userId, assignment) {
   );
 
   return mapAssignmentRow(rows[0]);
+}
+
+export async function updateAssignment(userId, id, assignment) {
+  await ensureSchemaReady();
+  const [duplicates] = await pool.execute(
+    `
+      SELECT id
+      FROM assignments
+      WHERE user_id = ?
+        AND LOWER(TRIM(title)) = ?
+        AND id <> ?
+      LIMIT 1
+    `,
+    [userId, normalizeTitleForComparison(assignment.title), id],
+  );
+
+  if (duplicates[0]) {
+    throw new Error("You already have an assignment with that name.");
+  }
+
+  await pool.execute(
+    `
+      UPDATE assignments
+      SET title = ?, due_date = ?, estimated_minutes = ?, priority = ?, minutes_completed = ?
+      WHERE id = ? AND user_id = ?
+    `,
+    [
+      assignment.title,
+      assignment.dueDate,
+      assignment.estimatedMinutes,
+      assignment.priority,
+      assignment.minutesCompleted,
+      id,
+      userId,
+    ],
+  );
+
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        title,
+        DATE_FORMAT(due_date, '%Y-%m-%d') AS dueDate,
+        estimated_minutes AS estimatedMinutes,
+        minutes_completed AS minutesCompleted,
+        priority
+      FROM assignments
+      WHERE id = ? AND user_id = ?
+    `,
+    [id, userId],
+  );
+
+  return rows[0] ? mapAssignmentRow(rows[0]) : null;
 }
 
 export async function deleteAssignment(userId, id) {
@@ -339,4 +454,165 @@ export async function saveSchedule(userId, runType, blocks) {
   );
 
   return runId;
+}
+
+export async function getLatestScheduleBlocks(userId) {
+  await ensureSchemaReady();
+  const [runs] = await pool.execute(
+    `
+      SELECT id
+      FROM schedule_runs
+      WHERE user_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  if (!runs[0]) {
+    return [];
+  }
+
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        run_id AS runId,
+        assignment_title AS assignmentTitle,
+        DATE_FORMAT(due_date, '%Y-%m-%d') AS dueDate,
+        DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS scheduledDate,
+        minutes,
+        pomodoros,
+        priority,
+        overdue
+      FROM schedule_blocks
+      WHERE run_id = ?
+      ORDER BY scheduled_date, id
+    `,
+    [runs[0].id],
+  );
+
+  return rows.map(mapScheduleBlockRow);
+}
+
+export async function getDashboardData(userId) {
+  await ensureSchemaReady();
+  const assignments = await listAssignments(userId);
+  const latestSchedule = await getLatestScheduleBlocks(userId);
+  const timerData = await getTimerData(userId);
+  const today = new Date().toISOString().slice(0, 10);
+  const todayBlocks = latestSchedule.filter((block) => block.scheduledDate === today);
+
+  return {
+    summary: {
+      assignmentCount: assignments.length,
+      totalEstimatedMinutes: assignments.reduce((sum, assignment) => sum + Number(assignment.estimatedMinutes || 0), 0),
+      totalCompletedMinutes: assignments.reduce((sum, assignment) => sum + Number(assignment.minutesCompleted || 0), 0),
+      todayStudyMinutes: todayBlocks.reduce((sum, block) => sum + Number(block.minutes || 0), 0),
+      focusSessionsCompleted: timerData.summary.focusSessionsCompleted,
+    },
+    upcomingAssignments: assignments.slice(0, 5),
+    todayBlocks,
+    recentSessions: timerData.sessions.slice(0, 4),
+  };
+}
+
+export async function createStudySession(userId, session) {
+  await ensureSchemaReady();
+
+  let assignmentTitle = null;
+  if (session.assignmentId) {
+    const [rows] = await pool.execute(
+      `
+        SELECT title
+        FROM assignments
+        WHERE id = ? AND user_id = ?
+        LIMIT 1
+      `,
+      [session.assignmentId, userId],
+    );
+    assignmentTitle = rows[0]?.title ?? null;
+  }
+
+  const [result] = await pool.execute(
+    `
+      INSERT INTO study_sessions (
+        user_id,
+        assignment_id,
+        assignment_title,
+        session_type,
+        planned_minutes,
+        actual_minutes,
+        completed
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      userId,
+      session.assignmentId || null,
+      assignmentTitle,
+      session.sessionType,
+      session.plannedMinutes,
+      session.actualMinutes,
+      session.completed ? 1 : 0,
+    ],
+  );
+
+  if (session.applyToAssignment && session.completed && session.sessionType === "focus" && session.assignmentId && session.actualMinutes > 0) {
+    await applyCompletion(userId, session.assignmentId, session.actualMinutes);
+  }
+
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        assignment_id AS assignmentId,
+        assignment_title AS assignmentTitle,
+        session_type AS sessionType,
+        planned_minutes AS plannedMinutes,
+        actual_minutes AS actualMinutes,
+        completed,
+        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+      FROM study_sessions
+      WHERE id = ?
+    `,
+    [result.insertId],
+  );
+
+  return mapStudySessionRow(rows[0]);
+}
+
+export async function getTimerData(userId) {
+  await ensureSchemaReady();
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        assignment_id AS assignmentId,
+        assignment_title AS assignmentTitle,
+        session_type AS sessionType,
+        planned_minutes AS plannedMinutes,
+        actual_minutes AS actualMinutes,
+        completed,
+        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+      FROM study_sessions
+      WHERE user_id = ?
+      ORDER BY id DESC
+      LIMIT 12
+    `,
+    [userId],
+  );
+
+  const sessions = rows.map(mapStudySessionRow);
+
+  return {
+    summary: {
+      totalSessions: sessions.length,
+      focusSessionsCompleted: sessions.filter((session) => session.sessionType === "focus" && session.completed).length,
+      focusMinutesCompleted: sessions
+        .filter((session) => session.sessionType === "focus" && session.completed)
+        .reduce((sum, session) => sum + Number(session.actualMinutes || 0), 0),
+    },
+    sessions,
+  };
 }

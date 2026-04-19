@@ -118,35 +118,21 @@ export function mountSchedulerFeature(container) {
   container.insertAdjacentHTML(
     "beforeend",
     `
-      <form class="scheduler-assignment-form" id="scheduler-assignment-form">
-        <p class="scheduler-helper">
-          Add one assignment at a time. Build your assignment list first, then generate or reschedule the plan.
-        </p>
-        <label>
-          <span>Assignment title</span>
-          <input name="title" type="text" placeholder="Ex: Database Project" />
-        </label>
-        <label>
-          <span>Due date</span>
-          <input name="dueDate" type="date" />
-        </label>
-        <label>
-          <span>Estimated minutes</span>
-          <input name="estimatedMinutes" type="number" value="120" min="30" step="15" />
-        </label>
-        <label>
-          <span>Priority</span>
-          <input name="priority" type="number" value="3" min="1" max="5" />
-        </label>
-        <div class="scheduler-action-row">
-          <button type="submit">Add assignment</button>
-          <button type="button" class="secondary" id="clear-button">Clear assignments</button>
+      <section class="scheduler-source-card">
+        <div>
+          <p class="feature-label">Assignment source</p>
+          <h3>Build your task list in Assignments, then plan it here.</h3>
+          <p class="scheduler-source-copy">
+            This page reads your saved assignments from MySQL and turns them into a study plan. If you need to add,
+            edit, or delete work, use the Assignments page first.
+          </p>
         </div>
-      </form>
-      <div class="scheduler-assignment-list" id="scheduler-assignment-list"></div>
+        <a class="hero-button" href="#assignments">Open Assignments</a>
+      </section>
+      <div class="scheduler-assignment-summary" id="scheduler-assignment-summary"></div>
       <form class="scheduler-form" id="scheduler-form">
         <p class="scheduler-helper">
-          Generate schedule creates a plan from the assignments you added. Then use the reschedule controls to tell the planner
+          Generate schedule creates a plan from your saved assignments. Then use the reschedule controls to tell the planner
           whether you completed work or missed work, and it will rebuild the plan from that update.
         </p>
         <label>
@@ -197,12 +183,10 @@ export function mountSchedulerFeature(container) {
     `,
   );
 
-  const assignmentForm = container.querySelector("#scheduler-assignment-form");
-  const assignmentList = container.querySelector("#scheduler-assignment-list");
+  const assignmentSummary = container.querySelector("#scheduler-assignment-summary");
   const form = container.querySelector("#scheduler-form");
   const output = container.querySelector("#scheduler-output");
   const rescheduleButton = container.querySelector("#reschedule-button");
-  const clearButton = container.querySelector("#clear-button");
   const rescheduleAssignment = container.querySelector("#reschedule-assignment");
   const rescheduleStatus = container.querySelector("#reschedule-status");
   const rescheduleMinutes = container.querySelector("#reschedule-minutes");
@@ -245,30 +229,41 @@ export function mountSchedulerFeature(container) {
     return [...schedulerAssignments];
   }
 
-  function renderAssignmentList() {
+  function renderAssignmentSummary() {
     if (!schedulerAssignments.length) {
-      assignmentList.innerHTML = `<p class="scheduler-empty">No assignments added yet.</p>`;
+      assignmentSummary.innerHTML = `
+        <div class="scheduler-empty">
+          <p>No assignments saved yet. Add your first assignment on the Assignments page, then come back here.</p>
+        </div>
+      `;
       syncRescheduleAssignments([]);
       return;
     }
 
-    assignmentList.innerHTML = schedulerAssignments
-      .map(
-        (assignment, index) => `
-          <div class="scheduler-added-assignment">
-            <div>
-              <strong>${assignment.title}</strong>
-              <span>Due ${assignment.dueDate}</span>
-              <span>${assignment.estimatedMinutes} min</span>
-              <span>Priority ${assignment.priority}</span>
-            </div>
-            <button type="button" class="secondary scheduler-remove-button" data-index="${index}">
-              Remove
-            </button>
-          </div>
-        `,
-      )
-      .join("");
+    assignmentSummary.innerHTML = `
+      <div class="scheduler-assignment-summary-header">
+        <div>
+          <p class="feature-label">Planner input</p>
+          <h3>${schedulerAssignments.length} saved ${schedulerAssignments.length === 1 ? "assignment" : "assignments"}</h3>
+        </div>
+        <span class="scheduler-results-caption">These are the items the scheduler will use for generate and reschedule.</span>
+      </div>
+      <div class="scheduler-assignment-summary-grid">
+        ${schedulerAssignments
+          .map(
+            (assignment) => `
+              <article class="scheduler-assignment-chip">
+                <strong>${assignment.title}</strong>
+                <span>Due ${formatFriendlyDate(assignment.dueDate)}</span>
+                <span>${assignment.estimatedMinutes} min total</span>
+                <span>${assignment.minutesCompleted || 0} min completed</span>
+                <span>Priority ${assignment.priority}</span>
+              </article>
+            `,
+          )
+          .join("")}
+      </div>
+    `;
 
     syncRescheduleAssignments(schedulerAssignments);
   }
@@ -295,78 +290,11 @@ export function mountSchedulerFeature(container) {
     };
   }
 
-  function clearSchedulerForm() {
-    schedulerAssignments.length = 0;
-    assignmentForm.reset();
-    output.innerHTML = `<p class="scheduler-empty">Assignments cleared. Add new values and click Generate schedule.</p>`;
-    renderAssignmentList();
-  }
-
-  assignmentForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-
-    try {
-      const formData = new FormData(assignmentForm);
-      const assignment = {
-        title: String(formData.get("title") || "").trim(),
-        dueDate: String(formData.get("dueDate") || ""),
-        estimatedMinutes: Number(formData.get("estimatedMinutes") || 0),
-        priority: Number(formData.get("priority") || 3),
-      };
-
-      if (!assignment.title || !assignment.dueDate || assignment.estimatedMinutes <= 0) {
-        renderError(output, "Fill out title, due date, and estimated minutes before adding an assignment.");
-        return;
-      }
-
-      const result = await postScheduler("/api/assignments", assignment);
-      schedulerAssignments.splice(0, schedulerAssignments.length, ...result.assignments);
-      assignmentForm.reset();
-      assignmentForm.elements.namedItem("estimatedMinutes").value = "120";
-      assignmentForm.elements.namedItem("priority").value = "3";
-      renderAssignmentList();
-      renderError(output, `Added "${assignment.title}". You can add more assignments or generate your study plan now.`);
-    } catch (error) {
-      renderError(output, error.message);
-    }
-  });
-
-  assignmentList.addEventListener("click", async (event) => {
-    const button = event.target.closest(".scheduler-remove-button");
-    if (!button) {
-      return;
-    }
-
-    const index = Number(button.dataset.index);
-    if (Number.isNaN(index)) {
-      return;
-    }
-
-    const assignment = schedulerAssignments[index];
-    if (!assignment) {
-      return;
-    }
-
-    try {
-      const result = await authenticatedFetch(`/api/assignments/${assignment.id}`, {
-        method: "DELETE",
-      });
-      const data = await result.json();
-      if (!result.ok) {
-        throw new Error(data.error || "Could not remove assignment.");
-      }
-      schedulerAssignments.splice(0, schedulerAssignments.length, ...data.assignments);
-      renderAssignmentList();
-    } catch (error) {
-      renderError(output, error.message);
-    }
-  });
-
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const assignments = readAssignments();
     if (!assignments.length) {
-      renderError(output, "Add at least one assignment before generating a schedule.");
+      renderError(output, "Add at least one assignment on the Assignments page before generating a schedule.");
       return;
     }
 
@@ -383,7 +311,7 @@ export function mountSchedulerFeature(container) {
   rescheduleButton.addEventListener("click", async () => {
     const assignments = readAssignments();
     if (!assignments.length) {
-      renderError(output, "Add at least one assignment before rescheduling.");
+      renderError(output, "Add at least one assignment on the Assignments page before rescheduling.");
       return;
     }
 
@@ -404,28 +332,15 @@ export function mountSchedulerFeature(container) {
     }
   });
 
-  clearButton.addEventListener("click", async () => {
-    try {
-      const response = await authenticatedFetch("/api/assignments", { method: "DELETE" });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Could not clear assignments.");
-      }
-      clearSchedulerForm();
-    } catch (error) {
-      renderError(output, error.message);
-    }
-  });
-
   fetchAssignments()
     .then((data) => {
       if (!data) {
         return;
       }
       schedulerAssignments.splice(0, schedulerAssignments.length, ...(data.assignments || []));
-      renderAssignmentList();
+      renderAssignmentSummary();
       if (!schedulerAssignments.length) {
-        renderError(output, "Add at least one assignment before generating a schedule.");
+        renderError(output, "Add at least one assignment on the Assignments page before generating a schedule.");
         return;
       }
       return postScheduler("/api/scheduler/generate", {
