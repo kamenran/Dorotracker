@@ -5,3 +5,5 @@ database/mysql-data/
 database/mysql-run/
 database/local-store.json
 tools/
+certs/*.pem
+certs/.DS_Store

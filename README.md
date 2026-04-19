@@ -236,3 +236,35 @@ For a fresh machine, the full local setup is:
 For local development, each person still needs their own MySQL installation.
 
 For a final demo where users should not install anything locally, the better approach is to deploy the app online with a cloud-hosted MySQL database.
+
+## Recommended cloud setup
+
+If you want the app to open from a real link and still use MySQL, the cleanest option is:
+
+- host the app on Railway
+- host the database on Aiven
+
+That gives you:
+
+- a live website link for the project
+- a real MySQL database
+- the ability to connect MySQL Workbench to the same database
+- a clean demo where actions in the app appear in the database live
+
+## Railway environment variables
+
+If you deploy this app to Railway, add these environment variables in the Railway project:
+
+- `HOST=0.0.0.0`
+- `PORT=8000`
+- `MYSQL_HOST=your-aiven-host`
+- `MYSQL_PORT=your-aiven-port`
+- `MYSQL_USER=your-aiven-user`
+- `MYSQL_PASSWORD=your-aiven-password`
+- `MYSQL_DATABASE=dorotracker`
+- `MYSQL_SOCKET=`
+- `MYSQL_SSL_MODE=required`
+- `MYSQL_SSL_CA_CONTENT=paste the full Aiven CA certificate here`
+
+Use `MYSQL_SSL_CA_CONTENT` for Railway or another hosted platform.
+Use `MYSQL_SSL_CA` only for local development when the certificate is stored as a file on your own machine.

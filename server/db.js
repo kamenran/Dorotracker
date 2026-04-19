@@ -1,11 +1,31 @@
+import fs from "node:fs";
 import mysql from "mysql2/promise";
 import crypto from "node:crypto";
 import { config } from "./config.js";
+
+function buildSslConfig() {
+  if (config.mysqlSslCaContent) {
+    return {
+      ca: config.mysqlSslCaContent.replace(/\\n/g, "\n"),
+      rejectUnauthorized: true,
+    };
+  }
+
+  if (config.mysqlSslCa) {
+    return {
+      ca: fs.readFileSync(config.mysqlSslCa, "utf8"),
+      rejectUnauthorized: true,
+    };
+  }
+
+  return null;
+}
 
 const pool = mysql.createPool({
   ...(config.mysqlSocket
     ? { socketPath: config.mysqlSocket }
     : { host: config.mysqlHost, port: config.mysqlPort }),
+  ...(buildSslConfig() ? { ssl: buildSslConfig() } : {}),
   user: config.mysqlUser,
   password: config.mysqlPassword,
   database: config.mysqlDatabase,
@@ -13,6 +33,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
 });
+
 
 let schemaReadyPromise;
 

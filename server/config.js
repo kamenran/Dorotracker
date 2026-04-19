@@ -31,4 +31,7 @@ export const config = {
   mysqlUser: process.env.MYSQL_USER || "root",
   mysqlPassword: process.env.MYSQL_PASSWORD || "",
   mysqlDatabase: process.env.MYSQL_DATABASE || "dorotracker",
+  mysqlSslCa: process.env.MYSQL_SSL_CA || "",
+  mysqlSslCaContent: process.env.MYSQL_SSL_CA_CONTENT || "",
+  mysqlSslMode: process.env.MYSQL_SSL_MODE || "",
 };
