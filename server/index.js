@@ -186,6 +186,23 @@ function normalizeAssignmentPayload(body) {
   };
 }
 
+function normalizeBlocksForComparison(blocks) {
+  return (blocks || []).map((block) => ({
+    assignmentId: block.assignmentId ?? null,
+    assignmentTitle: block.assignmentTitle,
+    dueDate: block.dueDate,
+    scheduledDate: block.scheduledDate,
+    minutes: Number(block.minutes || 0),
+    pomodoros: Number(block.pomodoros || 0),
+    priority: Number(block.priority || 0),
+    overdue: Boolean(block.overdue),
+  }));
+}
+
+function blocksMatch(leftBlocks, rightBlocks) {
+  return JSON.stringify(normalizeBlocksForComparison(leftBlocks)) === JSON.stringify(normalizeBlocksForComparison(rightBlocks));
+}
+
 function routeStatic(request, response) {
   const requestedPath = request.url === "/" ? "/index.html" : request.url;
   const resolvedPath = path.resolve(frontendRoot, `.${requestedPath}`);
@@ -389,6 +406,7 @@ const server = http.createServer(async (request, response) => {
         response,
         200,
         await (async () => {
+          const latestBlocks = await getLatestScheduleBlocks(auth.user.id);
           const result = reschedule({
             assignments,
             ...normalizeSchedulerPayload(body),
@@ -396,13 +414,25 @@ const server = http.createServer(async (request, response) => {
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",
             missedMinutes: body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0,
           });
-          await saveSchedule(auth.user.id, "reschedule", result.blocks.map((block) => {
+          const blocksToSave = result.blocks.map((block) => {
             const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
             return {
               ...block,
               assignmentId: match?.id ?? null,
             };
-          }));
+          });
+
+          if (body.missedAssignmentId && blocksMatch(latestBlocks, blocksToSave)) {
+            return {
+              ...result,
+              warnings: [
+                "That missed-work update did not change the plan because this assignment is already being scheduled as early as possible.",
+                ...result.warnings,
+              ],
+            };
+          }
+
+          await saveSchedule(auth.user.id, "reschedule", blocksToSave);
           return result;
         })(),
       );
