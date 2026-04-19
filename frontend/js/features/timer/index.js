@@ -67,12 +67,16 @@ function formatSessionLabel(type) {
 }
 
 function formatTimestamp(value) {
-  return new Date(`${value.replace(" ", "T")}Z`).toLocaleString("en-US", {
+  return new Date(value).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function isAssignmentCompleted(assignment) {
+  return Number(assignment.minutesCompleted || 0) >= Number(assignment.estimatedMinutes || 0);
 }
 
 function renderCloudCompanion() {
@@ -313,9 +317,11 @@ function fillAssignmentOptions(assignments) {
     return;
   }
 
+  const activeAssignments = assignments.filter((assignment) => !isAssignmentCompleted(assignment));
+
   timerElements.assignmentSelect.innerHTML = `
     <option value="">No linked assignment</option>
-    ${assignments
+    ${activeAssignments
       .map(
         (assignment) => `
           <option value="${assignment.id}">
@@ -328,6 +334,11 @@ function fillAssignmentOptions(assignments) {
 
   if (timerState.assignmentId) {
     timerElements.assignmentSelect.value = String(timerState.assignmentId);
+    if (timerElements.assignmentSelect.value !== String(timerState.assignmentId)) {
+      timerState.assignmentId = "";
+      timerState.assignmentTitle = "";
+      persistState();
+    }
   }
 }
 
@@ -502,7 +513,10 @@ export function mountTimerFeature(container) {
 
       fillAssignmentOptions(data.assignments);
       if (timerState.assignmentId) {
-        const selected = data.assignments.find((assignment) => String(assignment.id) === String(timerState.assignmentId));
+        const selected = data.assignments.find(
+          (assignment) =>
+            String(assignment.id) === String(timerState.assignmentId) && !isAssignmentCompleted(assignment),
+        );
         timerState.assignmentTitle = selected?.title || "";
       }
       renderHistory(data.timer);

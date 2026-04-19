@@ -26,6 +26,7 @@ const pool = mysql.createPool({
     ? { socketPath: config.mysqlSocket }
     : { host: config.mysqlHost, port: config.mysqlPort }),
   ...(buildSslConfig() ? { ssl: buildSslConfig() } : {}),
+  timezone: "Z",
   user: config.mysqlUser,
   password: config.mysqlPassword,
   database: config.mysqlDatabase,
@@ -77,6 +78,10 @@ function mapStudySessionRow(row) {
 
 function normalizeTitleForComparison(title) {
   return String(title || "").trim().toLowerCase();
+}
+
+function isAssignmentCompleted(assignment) {
+  return Number(assignment.minutesCompleted || 0) >= Number(assignment.estimatedMinutes || 0);
 }
 
 async function columnExists(tableName, columnName) {
@@ -437,14 +442,7 @@ export async function applyCompletion(userId, id, minutes) {
 
 export async function applyMissedWork(userId, id, minutes) {
   await ensureSchemaReady();
-  await pool.execute(
-    `
-      UPDATE assignments
-      SET estimated_minutes = estimated_minutes + ?
-      WHERE id = ? AND user_id = ?
-    `,
-    [minutes, id, userId],
-  );
+  return { userId, id, minutes, applied: false };
 }
 
 export async function saveSchedule(userId, runType, blocks) {
@@ -499,11 +497,12 @@ export async function saveSchedule(userId, runType, blocks) {
 export async function getLatestScheduleBlocks(userId) {
   await ensureSchemaReady();
   const assignments = await listAssignments(userId);
+  const activeAssignments = assignments.filter((assignment) => !isAssignmentCompleted(assignment));
   const activeAssignmentKeys = new Set(
-    assignments.map((assignment) => `${assignment.id}:${assignment.title}`),
+    activeAssignments.map((assignment) => `${assignment.id}:${assignment.title}`),
   );
 
-  if (!assignments.length) {
+  if (!activeAssignments.length) {
     return [];
   }
 
@@ -550,6 +549,7 @@ export async function getLatestScheduleBlocks(userId) {
 export async function getDashboardData(userId) {
   await ensureSchemaReady();
   const assignments = await listAssignments(userId);
+  const activeAssignments = assignments.filter((assignment) => !isAssignmentCompleted(assignment));
   const latestSchedule = await getLatestScheduleBlocks(userId);
   const timerData = await getTimerData(userId);
   const today = new Date().toISOString().slice(0, 10);
@@ -563,7 +563,7 @@ export async function getDashboardData(userId) {
       todayStudyMinutes: todayBlocks.reduce((sum, block) => sum + Number(block.minutes || 0), 0),
       focusSessionsCompleted: timerData.summary.focusSessionsCompleted,
     },
-    upcomingAssignments: assignments.slice(0, 5),
+    upcomingAssignments: activeAssignments.slice(0, 5),
     todayBlocks,
     recentSessions: timerData.sessions.slice(0, 4),
   };
@@ -572,18 +572,32 @@ export async function getDashboardData(userId) {
 export async function createStudySession(userId, session) {
   await ensureSchemaReady();
 
+  let assignmentId = session.assignmentId || null;
   let assignmentTitle = null;
-  if (session.assignmentId) {
+  let canApplyToAssignment = Boolean(session.applyToAssignment);
+
+  if (assignmentId) {
     const [rows] = await pool.execute(
       `
-        SELECT title
+        SELECT
+          title,
+          estimated_minutes AS estimatedMinutes,
+          minutes_completed AS minutesCompleted
         FROM assignments
         WHERE id = ? AND user_id = ?
         LIMIT 1
       `,
-      [session.assignmentId, userId],
+      [assignmentId, userId],
     );
-    assignmentTitle = rows[0]?.title ?? null;
+    const assignment = rows[0] || null;
+
+    if (!assignment || isAssignmentCompleted(assignment)) {
+      assignmentId = null;
+      assignmentTitle = null;
+      canApplyToAssignment = false;
+    } else {
+      assignmentTitle = assignment.title;
+    }
   }
 
   const [result] = await pool.execute(
@@ -601,7 +615,7 @@ export async function createStudySession(userId, session) {
     `,
     [
       userId,
-      session.assignmentId || null,
+      assignmentId,
       assignmentTitle,
       session.sessionType,
       session.plannedMinutes,
@@ -610,8 +624,8 @@ export async function createStudySession(userId, session) {
     ],
   );
 
-  if (session.applyToAssignment && session.completed && session.sessionType === "focus" && session.assignmentId && session.actualMinutes > 0) {
-    await applyCompletion(userId, session.assignmentId, session.actualMinutes);
+  if (canApplyToAssignment && session.completed && session.sessionType === "focus" && assignmentId && session.actualMinutes > 0) {
+    await applyCompletion(userId, assignmentId, session.actualMinutes);
   }
 
   const [rows] = await pool.execute(
@@ -624,7 +638,7 @@ export async function createStudySession(userId, session) {
         planned_minutes AS plannedMinutes,
         actual_minutes AS actualMinutes,
         completed,
-        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS createdAt
       FROM study_sessions
       WHERE id = ?
     `,
@@ -646,7 +660,7 @@ export async function getTimerData(userId) {
         planned_minutes AS plannedMinutes,
         actual_minutes AS actualMinutes,
         completed,
-        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS createdAt
+        DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS createdAt
       FROM study_sessions
       WHERE user_id = ?
       ORDER BY id DESC

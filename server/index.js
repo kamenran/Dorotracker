@@ -407,12 +407,19 @@ const server = http.createServer(async (request, response) => {
         200,
         await (async () => {
           const latestBlocks = await getLatestScheduleBlocks(auth.user.id);
+          const selectedAssignmentRemaining = selectedAssignment
+            ? Math.max(
+                Number(selectedAssignment.estimatedMinutes || 0) - Number(selectedAssignment.minutesCompleted || 0),
+                0,
+              )
+            : 0;
+          const requestedMissedMinutes = body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0;
           const result = reschedule({
             assignments,
             ...normalizeSchedulerPayload(body),
             missedAssignmentTitle:
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",
-            missedMinutes: body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0,
+            missedMinutes: requestedMissedMinutes,
           });
           const blocksToSave = result.blocks.map((block) => {
             const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
@@ -426,7 +433,11 @@ const server = http.createServer(async (request, response) => {
             return {
               ...result,
               warnings: [
-                "That missed-work update did not change the plan because this assignment is already being scheduled as early as possible.",
+                selectedAssignmentRemaining <= 0
+                  ? "That missed-work update did not change the plan because this assignment is already fully accounted for."
+                  : requestedMissedMinutes >= selectedAssignmentRemaining
+                    ? "That missed-work update did not change the plan because it already reached this assignment's remaining-minute limit."
+                    : "That missed-work update did not change the plan.",
                 ...result.warnings,
               ],
             };
