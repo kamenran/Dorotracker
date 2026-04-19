@@ -396,7 +396,7 @@ export function mountTimerFeature(container) {
           <p class="feature-label">Cozy focus room</p>
           <h2>Study with the app instead of beside it.</h2>
           <p class="timer-hero-copy">
-            Choose a focus block or break, attach it to an assignment if you want, and save completed sessions into MySQL so your demo shows real study activity.
+            Choose a focus block or break, attach it to an assignment if you want, and save completed sessions.
           </p>
         </div>
         <div class="timer-hero-mascot">

@@ -24,6 +24,20 @@ function featureCard(route, title, description) {
   `;
 }
 
+function getStoredFirstName() {
+  const rawUser = window.localStorage.getItem("dorotracker.user");
+  if (!rawUser) {
+    return "";
+  }
+
+  try {
+    const user = JSON.parse(rawUser);
+    return String(user.fullName || "").trim().split(/\s+/)[0] || "";
+  } catch {
+    return "";
+  }
+}
+
 function cloudMascot(label = "Doro cloud") {
   return `
     <div class="cloud-mascot" aria-label="${label}" role="img">
@@ -67,12 +81,11 @@ function renderHomePage(app) {
         </p>
         <div class="home-actions">
           <a class="hero-button" href="#scheduler">Open Scheduler</a>
-          <a class="hero-link" href="#assignments">Browse feature pages</a>
         </div>
       </div>
       <div class="home-spotlight">
         <div class="spotlight-card">
-          <p class="feature-label">Brand and dashboard</p>
+          <p class="feature-label">Dashboard</p>
           <div id="home-dashboard">
             <h2>Your planning space, cleaned up.</h2>
             <p>
@@ -167,6 +180,9 @@ async function loadHomeDashboard() {
     return;
   }
 
+  const firstName = getStoredFirstName();
+  const plannerTitle = firstName ? `${firstName}'s Planner` : "Your Planner";
+
   try {
     const response = await authenticatedFetch("/api/dashboard");
     if (response.status === 401) {
@@ -183,7 +199,7 @@ async function loadHomeDashboard() {
     }
 
     dashboard.innerHTML = `
-      <h2>Your planner snapshot</h2>
+      <h2>${plannerTitle}</h2>
       <div class="home-dashboard-grid">
         <div class="home-stat-card">
           <strong>${data.summary.assignmentCount}</strong>
