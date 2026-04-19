@@ -55,9 +55,13 @@ export function generateSchedule({
 
   const blocks = [];
   const warnings = [];
+  let activeAssignmentCount = 0;
 
   for (const assignment of sortedAssignments) {
     let remainingMinutes = getRemainingMinutes(assignment);
+    if (remainingMinutes > 0) {
+      activeAssignmentCount += 1;
+    }
     let frontloadMinutes = Math.min(Number(assignment.frontloadMinutes || 0), remainingMinutes);
     const bufferedDeadline = parseDate(assignment.dueDate);
     bufferedDeadline.setDate(bufferedDeadline.getDate() - deadlineBufferDays);
@@ -132,7 +136,7 @@ export function generateSchedule({
     }),
     warnings,
     summary: {
-      assignmentCount: assignments.length,
+      assignmentCount: activeAssignmentCount,
       totalMinutes: blocks.reduce((total, block) => total + block.minutes, 0),
       overloadedAssignments: warnings.length,
     },
