@@ -129,7 +129,6 @@ export function mountSchedulerFeature(container) {
         </div>
         <div class="scheduler-source-actions">
           <a class="hero-button" href="#assignments">Open Assignments</a>
-          <button type="button" class="secondary" id="scheduler-refresh">Refresh</button>
         </div>
       </section>
       <div class="scheduler-assignment-summary" id="scheduler-assignment-summary"></div>
@@ -157,6 +156,7 @@ export function mountSchedulerFeature(container) {
 
         <div class="scheduler-action-row">
           <button type="submit">Generate schedule</button>
+          <button type="button" class="secondary" id="scheduler-refresh">Refresh</button>
         </div>
       </form>
       <div class="scheduler-reschedule-panel">
