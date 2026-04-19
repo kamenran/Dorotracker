@@ -1,167 +1,35 @@
 # DoroTracker
 
-DoroTracker is a study planning web app built around four core flows:
+DoroTracker is a study planning prototype that combines assignment tracking, automated schedule generation, schedule regeneration, and Pomodoro-based study sessions in a single web application.
 
-- account registration and login
-- assignment tracking
-- schedule generation and rescheduling
-- Pomodoro-based study sessions
+The prototype demonstrates a usable application with real database-backed functionality, including user accounts, assignment CRUD operations, saved schedules, and tracked study sessions.
 
-The app uses a Node.js backend, a MySQL database, and a lightweight frontend designed around the DoroTracker brand.
+## Access
 
-## Features
+- Live application: `[Add Railway URL before submission]`
+- GitHub repository: [https://github.com/kamenran/Dorotracker](https://github.com/kamenran/Dorotracker)
 
-- register and log in with hashed passwords
-- create, view, edit, and delete assignments
-- prevent duplicate assignment names for the same user
-- reject invalid or past due dates
-- generate a study schedule based on deadlines, effort, and study limits
-- reschedule after marking work as completed or missed
-- track Pomodoro study sessions and progress
-- store users, assignments, schedules, and sessions in MySQL
+## Project Scope
 
-## Tech stack
+The current prototype includes:
 
-- Node.js
-- MySQL
-- Railway for web hosting
-- Aiven for hosted MySQL
-- MySQL Workbench for database inspection and demoing
+- user registration and login with hashed passwords
+- assignment create, read, update, and delete operations
+- schedule generation based on deadlines, estimated effort, and study limits
+- schedule regeneration after the user marks work as completed or missed
+- Pomodoro-based study session tracking
+- persistent storage in MySQL
 
-## Project structure
+## Technology Stack
 
-- [frontend/index.html](/Users/kamraneisenberg/Documents/Dorotracker/frontend/index.html)
-- [frontend/styles.css](/Users/kamraneisenberg/Documents/Dorotracker/frontend/styles.css)
-- [server/index.js](/Users/kamraneisenberg/Documents/Dorotracker/server/index.js)
-- [server/db.js](/Users/kamraneisenberg/Documents/Dorotracker/server/db.js)
-- [database/schema.sql](/Users/kamraneisenberg/Documents/Dorotracker/database/schema.sql)
+- Node.js backend
+- MySQL database
+- Railway hosted deployment
+- Aiven hosted MySQL
 
-## Hosted deployment
+## Database Implementation
 
-The intended hosted setup is:
-
-- Railway for the app
-- Aiven for the MySQL database
-
-This gives you:
-
-- a live project link
-- a real MySQL backend
-- the ability to show app actions appearing in MySQL Workbench during a demo
-
-### Railway variables
-
-Set these variables in Railway:
-
-- `HOST=0.0.0.0`
-- `PORT=8000`
-- `MYSQL_HOST=your-aiven-host`
-- `MYSQL_PORT=your-aiven-port`
-- `MYSQL_USER=your-aiven-user`
-- `MYSQL_PASSWORD=your-aiven-password`
-- `MYSQL_DATABASE=dorotracker`
-- `MYSQL_SSL_MODE=required`
-- `MYSQL_SSL_CA_CONTENT=paste the full Aiven CA certificate contents here`
-
-Important:
-
-- do not set `MYSQL_SOCKET` on Railway
-- Railway should connect by host and port, not by `/tmp/mysql.sock`
-
-## Local setup
-
-If you want to run the app locally, you need:
-
-- Node.js
-- MySQL
-
-### Mac
-
-1. Install Homebrew if needed.
-2. Install Node.js and MySQL:
-
-```bash
-brew install node
-brew install mysql
-```
-
-3. Start MySQL:
-
-```bash
-brew services start mysql
-```
-
-4. Clone the repo:
-
-```bash
-git clone https://github.com/kamenran/Dorotracker.git
-cd Dorotracker
-git checkout kamran-feature
-```
-
-5. Install dependencies:
-
-```bash
-npm install
-```
-
-6. Create the schema:
-
-```bash
-mysql -u root < database/schema.sql
-```
-
-7. Start the app:
-
-```bash
-./scripts/start_app.sh
-```
-
-8. Open:
-
-```text
-http://127.0.0.1:8000
-```
-
-### Windows
-
-1. Install Node.js from [nodejs.org](https://nodejs.org/).
-2. Install MySQL from [dev.mysql.com/downloads](https://dev.mysql.com/downloads/).
-3. Clone the repo:
-
-```bash
-git clone https://github.com/kamenran/Dorotracker.git
-cd Dorotracker
-git checkout kamran-feature
-```
-
-4. Install dependencies:
-
-```bash
-npm install
-```
-
-5. Create the schema:
-
-```bash
-mysql -u root -p < database/schema.sql
-```
-
-6. Start the app:
-
-```bash
-node server/index.js
-```
-
-7. Open:
-
-```text
-http://127.0.0.1:8000
-```
-
-## Database demo checklist
-
-For a clean project demo, open the app and MySQL Workbench at the same time and show changes appearing in these tables:
+The application stores and retrieves data from MySQL in the following core tables:
 
 - `users`
 - `user_sessions`
@@ -170,46 +38,50 @@ For a clean project demo, open the app and MySQL Workbench at the same time and 
 - `schedule_blocks`
 - `study_sessions`
 
-A strong demo flow is:
+These tables support the main functional areas of the prototype:
 
-1. Register a new user.
-2. Show the new user row in `users`.
-3. Add an assignment.
-4. Show the new assignment row in `assignments`.
-5. Generate a schedule.
-6. Show rows in `schedule_runs` and `schedule_blocks`.
-7. Complete a Pomodoro session.
-8. Show the new row in `study_sessions` and the assignment progress update.
+- account creation and authentication
+- assignment management
+- saved schedule generation and regeneration
+- recorded Pomodoro study sessions
 
-## Common issues
+## Main Code Locations
 
-### `connect ENOENT /tmp/mysql.sock`
+- [frontend/index.html](/Users/kamraneisenberg/Documents/Dorotracker/frontend/index.html)
+- [frontend/styles.css](/Users/kamraneisenberg/Documents/Dorotracker/frontend/styles.css)
+- [server/index.js](/Users/kamraneisenberg/Documents/Dorotracker/server/index.js)
+- [server/db.js](/Users/kamraneisenberg/Documents/Dorotracker/server/db.js)
+- [database/schema.sql](/Users/kamraneisenberg/Documents/Dorotracker/database/schema.sql)
 
-The app is trying to use a local MySQL socket instead of host and port.
+## Optional Local Run
 
-Fix:
+The primary review path for this project is the hosted Railway deployment listed above.
 
-- local machine: make sure your local MySQL socket path is valid
-- Railway: remove `MYSQL_SOCKET` entirely
+An optional local run path is also available for environments that already have both Node.js and MySQL installed and configured.
 
-### `mysql: command not found`
+Local run requirements:
 
-MySQL is not installed or not on your PATH.
+- Node.js
+- MySQL
+- ability to run the schema file in a local MySQL instance
 
-### `npm: command not found`
+Verified local run outline:
 
-Node.js is not installed or your shell needs to be restarted.
+1. Clone the repository
+2. Install dependencies with `npm install`
+3. Run [database/schema.sql](/Users/kamraneisenberg/Documents/Dorotracker/database/schema.sql) in a local MySQL database named `dorotracker`
+4. Configure environment variables so the app points to local MySQL rather than the hosted database
+5. Start the server with `npm start`
+6. Open `http://127.0.0.1:8000`
 
-### The site loads but data actions fail
+Because local MySQL configurations can vary by machine, the hosted deployment remains the recommended access path for review.
 
-Usually this means:
+## Submission Contents
 
-- the backend is not running
-- the schema was not loaded
-- or the database connection variables are wrong
+The final submission package is intended to include:
 
-## Notes
-
-- Keep `.env` out of Git.
-- Keep local certificate files out of Git.
-- Use [database/schema.sql](/Users/kamraneisenberg/Documents/Dorotracker/database/schema.sql) to initialize a fresh MySQL database.
+- the application code
+- the live access link
+- access instructions
+- the video demonstration
+- the document summarizing contributions by team member
