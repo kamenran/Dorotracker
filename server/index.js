@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import {
   applyCompletion,
-  applyMissedWork,
   clearAssignments,
   createAssignment,
   deleteAssignment,
@@ -382,9 +381,6 @@ const server = http.createServer(async (request, response) => {
       if (body.completedAssignmentId && Number(body.completedMinutes || 0) > 0) {
         await applyCompletion(auth.user.id, body.completedAssignmentId, Number(body.completedMinutes));
       }
-      if (body.missedAssignmentId && Number(body.missedMinutes || 0) > 0) {
-        await applyMissedWork(auth.user.id, body.missedAssignmentId, Number(body.missedMinutes));
-      }
       const assignments = await listAssignments(auth.user.id);
       const selectedAssignment = assignments.find(
         (assignment) => Number(assignment.id) === Number(body.completedAssignmentId || body.missedAssignmentId || 0),
@@ -398,7 +394,7 @@ const server = http.createServer(async (request, response) => {
             ...normalizeSchedulerPayload(body),
             missedAssignmentTitle:
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",
-            missedMinutes: 0,
+            missedMinutes: body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0,
           });
           await saveSchedule(auth.user.id, "reschedule", result.blocks.map((block) => {
             const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
