@@ -319,10 +319,17 @@ export async function createAssignment(userId, assignment) {
 
   const [result] = await pool.execute(
     `
-      INSERT INTO assignments (user_id, title, due_date, estimated_minutes, priority)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO assignments (user_id, title, due_date, estimated_minutes, minutes_completed, priority)
+      VALUES (?, ?, ?, ?, ?, ?)
     `,
-    [userId, assignment.title, assignment.dueDate, assignment.estimatedMinutes, assignment.priority],
+    [
+      userId,
+      assignment.title,
+      assignment.dueDate,
+      assignment.estimatedMinutes,
+      assignment.minutesCompleted,
+      assignment.priority,
+    ],
   );
 
   const [rows] = await pool.execute(
@@ -422,6 +429,18 @@ export async function applyCompletion(userId, id, minutes) {
     `
       UPDATE assignments
       SET minutes_completed = LEAST(estimated_minutes, minutes_completed + ?)
+      WHERE id = ? AND user_id = ?
+    `,
+    [minutes, id, userId],
+  );
+}
+
+export async function applyMissedWork(userId, id, minutes) {
+  await ensureSchemaReady();
+  await pool.execute(
+    `
+      UPDATE assignments
+      SET estimated_minutes = estimated_minutes + ?
       WHERE id = ? AND user_id = ?
     `,
     [minutes, id, userId],
