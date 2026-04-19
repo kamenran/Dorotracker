@@ -498,6 +498,15 @@ export async function saveSchedule(userId, runType, blocks) {
 
 export async function getLatestScheduleBlocks(userId) {
   await ensureSchemaReady();
+  const assignments = await listAssignments(userId);
+  const activeAssignmentKeys = new Set(
+    assignments.map((assignment) => `${assignment.id}:${assignment.title}`),
+  );
+
+  if (!assignments.length) {
+    return [];
+  }
+
   const [runs] = await pool.execute(
     `
       SELECT id
@@ -518,6 +527,7 @@ export async function getLatestScheduleBlocks(userId) {
       SELECT
         id,
         run_id AS runId,
+        assignment_id AS assignmentId,
         assignment_title AS assignmentTitle,
         DATE_FORMAT(due_date, '%Y-%m-%d') AS dueDate,
         DATE_FORMAT(scheduled_date, '%Y-%m-%d') AS scheduledDate,
@@ -532,7 +542,9 @@ export async function getLatestScheduleBlocks(userId) {
     [runs[0].id],
   );
 
-  return rows.map(mapScheduleBlockRow);
+  return rows
+    .filter((row) => activeAssignmentKeys.has(`${row.assignmentId ?? ""}:${row.assignmentTitle}`))
+    .map(mapScheduleBlockRow);
 }
 
 export async function getDashboardData(userId) {

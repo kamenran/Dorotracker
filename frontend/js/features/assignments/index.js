@@ -51,7 +51,7 @@ export function mountAssignmentFeature(container) {
         </div>
         <div class="assignments-action-row">
           <button type="submit" id="assignments-submit">Add assignment</button>
-          <button type="button" class="secondary" id="assignments-cancel">Cancel edit</button>
+          <button type="button" class="secondary" id="assignments-cancel" hidden>Cancel edit</button>
         </div>
       </form>
 
@@ -86,6 +86,7 @@ export function mountAssignmentFeature(container) {
     form.elements.namedItem("priority").value = "3";
     form.elements.namedItem("minutesCompleted").value = "0";
     submitButton.textContent = "Add assignment";
+    cancelButton.hidden = true;
   }
 
   function fillForm(assignment) {
@@ -96,6 +97,7 @@ export function mountAssignmentFeature(container) {
     form.elements.namedItem("priority").value = String(assignment.priority);
     form.elements.namedItem("minutesCompleted").value = String(assignment.minutesCompleted);
     submitButton.textContent = "Save changes";
+    cancelButton.hidden = false;
   }
 
   function renderList() {
