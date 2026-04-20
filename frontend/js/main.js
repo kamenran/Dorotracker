@@ -14,6 +14,23 @@ const routes = {
 
 let timeIntervalId = null;
 
+function isDatabaseConnectionIssue(message) {
+  const normalized = String(message || "").toLowerCase();
+  return (
+    normalized.includes("enotfound") ||
+    normalized.includes("econnrefused") ||
+    normalized.includes("database unavailable") ||
+    normalized.includes("could not load dashboard")
+  );
+}
+
+function databasePlaceholder(title) {
+  return `
+    <h2>${title}</h2>
+    <p>The planner is having trouble reaching the database right now. Please refresh in a moment.</p>
+  `;
+}
+
 function featureCard(route, title, description) {
   return `
     <a class="feature-launch-card" href="#${route}">
@@ -235,10 +252,12 @@ async function loadHomeDashboard() {
       </div>
     `;
   } catch (error) {
-    dashboard.innerHTML = `
-      <h2>Dashboard unavailable</h2>
-      <p>${error.message}</p>
-    `;
+    dashboard.innerHTML = isDatabaseConnectionIssue(error.message)
+      ? databasePlaceholder("Planner syncing...")
+      : `
+          <h2>Dashboard unavailable</h2>
+          <p>${error.message}</p>
+        `;
   }
 }
 
