@@ -442,7 +442,39 @@ export async function applyCompletion(userId, id, minutes) {
 
 export async function applyMissedWork(userId, id, minutes) {
   await ensureSchemaReady();
-  return { userId, id, minutes, applied: false };
+  const [rows] = await pool.execute(
+    `
+      SELECT minutes_completed AS minutesCompleted
+      FROM assignments
+      WHERE id = ? AND user_id = ?
+      LIMIT 1
+    `,
+    [id, userId],
+  );
+
+  const currentCompletedMinutes = Number(rows[0]?.minutesCompleted || 0);
+  const appliedMinutes = Math.min(Math.max(Number(minutes) || 0, 0), currentCompletedMinutes);
+
+  if (appliedMinutes <= 0) {
+    return {
+      applied: false,
+      appliedMinutes: 0,
+    };
+  }
+
+  await pool.execute(
+    `
+      UPDATE assignments
+      SET minutes_completed = GREATEST(0, minutes_completed - ?)
+      WHERE id = ? AND user_id = ?
+    `,
+    [appliedMinutes, id, userId],
+  );
+
+  return {
+    applied: true,
+    appliedMinutes,
+  };
 }
 
 export async function saveSchedule(userId, runType, blocks) {

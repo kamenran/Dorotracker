@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import {
   applyCompletion,
+  applyMissedWork,
   clearAssignments,
   createAssignment,
   deleteAssignment,
@@ -395,9 +396,14 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       const body = await readJsonBody(request);
+      const requestedMissedMinutes = body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0;
       if (body.completedAssignmentId && Number(body.completedMinutes || 0) > 0) {
         await applyCompletion(auth.user.id, body.completedAssignmentId, Number(body.completedMinutes));
       }
+      const missedWorkResult =
+        body.missedAssignmentId && requestedMissedMinutes > 0
+          ? await applyMissedWork(auth.user.id, body.missedAssignmentId, requestedMissedMinutes)
+          : { applied: false, appliedMinutes: 0 };
       const assignments = await listAssignments(auth.user.id);
       const selectedAssignment = assignments.find(
         (assignment) => Number(assignment.id) === Number(body.completedAssignmentId || body.missedAssignmentId || 0),
@@ -407,19 +413,18 @@ const server = http.createServer(async (request, response) => {
         200,
         await (async () => {
           const latestBlocks = await getLatestScheduleBlocks(auth.user.id);
-          const selectedAssignmentRemaining = selectedAssignment
+          const selectedAssignmentCompleted = selectedAssignment
             ? Math.max(
-                Number(selectedAssignment.estimatedMinutes || 0) - Number(selectedAssignment.minutesCompleted || 0),
+                Number(selectedAssignment.minutesCompleted || 0),
                 0,
               )
             : 0;
-          const requestedMissedMinutes = body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0;
           const result = reschedule({
             assignments,
             ...normalizeSchedulerPayload(body),
             missedAssignmentTitle:
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",
-            missedMinutes: requestedMissedMinutes,
+            missedMinutes: missedWorkResult.appliedMinutes,
           });
           const blocksToSave = result.blocks.map((block) => {
             const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
@@ -433,10 +438,10 @@ const server = http.createServer(async (request, response) => {
             return {
               ...result,
               warnings: [
-                selectedAssignmentRemaining <= 0
-                  ? "That missed-work update did not change the plan because this assignment is already fully accounted for."
-                  : requestedMissedMinutes >= selectedAssignmentRemaining
-                    ? "That missed-work update did not change the plan because it already reached this assignment's remaining-minute limit."
+                selectedAssignmentCompleted <= 0
+                  ? "That missed-work update did not change the plan because there are no completed minutes left to add back."
+                  : requestedMissedMinutes > missedWorkResult.appliedMinutes
+                    ? "That missed-work update only restored the remaining completed minutes for this assignment."
                     : "That missed-work update did not change the plan.",
                 ...result.warnings,
               ],
