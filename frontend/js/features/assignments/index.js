@@ -1,5 +1,10 @@
 import { authenticatedFetch } from "../auth/index.js";
 
+function isDatabaseConnectionIssue(message) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("enotfound") || normalized.includes("econnrefused");
+}
+
 function getTodayDateString() {
   const now = new Date();
   const year = now.getFullYear();
@@ -287,6 +292,18 @@ export function mountAssignmentFeature(container) {
 
   renderStatus("Load or create assignments from this page.", "neutral");
   loadAssignments().catch((error) => {
+    if (isDatabaseConnectionIssue(error.message)) {
+      list.innerHTML = `
+        <div class="scheduler-gate-card">
+          <p class="feature-label">Assignments temporarily unavailable</p>
+          <h3>Your saved work is still there.</h3>
+          <p>The app is having trouble reaching the database right now. Please refresh in a moment.</p>
+        </div>
+      `;
+      renderStatus("The database is temporarily unavailable. Please refresh in a moment.", "error");
+      return;
+    }
+
     renderStatus(error.message, "error");
   });
 }

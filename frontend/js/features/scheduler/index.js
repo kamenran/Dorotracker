@@ -1,5 +1,10 @@
 import { authenticatedFetch } from "../auth/index.js";
 
+function isDatabaseConnectionIssue(message) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("enotfound") || normalized.includes("econnrefused");
+}
+
 function formatFriendlyDate(dateString) {
   return new Date(`${dateString}T12:00:00`).toLocaleDateString("en-US", {
     weekday: "short",
@@ -96,7 +101,15 @@ function renderResults(target, result) {
 }
 
 function renderError(target, message) {
-  target.innerHTML = `<p class="scheduler-empty">${message}</p>`;
+  target.innerHTML = isDatabaseConnectionIssue(message)
+    ? `
+        <div class="scheduler-gate-card">
+          <p class="feature-label">Planner temporarily unavailable</p>
+          <h3>Your schedule will come back once the connection does.</h3>
+          <p>The app is having trouble reaching the database right now. Please refresh in a moment.</p>
+        </div>
+      `
+    : `<p class="scheduler-empty">${message}</p>`;
 }
 
 function renderSignedOutState(target) {
@@ -422,6 +435,6 @@ export function mountSchedulerFeature(container) {
   });
 
   refreshPlanner().catch((error) => {
-    output.innerHTML = `<p class="scheduler-empty">${error.message}</p>`;
+    renderError(output, error.message);
   });
 }

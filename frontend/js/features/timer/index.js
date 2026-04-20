@@ -6,6 +6,11 @@ let timerIntervalId = null;
 let timerElements = null;
 let timerState = createDefaultState();
 
+function isDatabaseConnectionIssue(message) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("enotfound") || normalized.includes("econnrefused");
+}
+
 function createDefaultState() {
   return {
     mode: "focus",
@@ -523,7 +528,15 @@ export function mountTimerFeature(container) {
       syncTimerView();
     })
     .catch((error) => {
-      container.innerHTML = `<div class="scheduler-empty"><p>${error.message}</p></div>`;
+      container.innerHTML = isDatabaseConnectionIssue(error.message)
+        ? `
+            <div class="scheduler-gate-card">
+              <p class="feature-label">Study room temporarily unavailable</p>
+              <h3>Your focus history will return once the database reconnects.</h3>
+              <p>The app is having trouble reaching the database right now. Please refresh in a moment.</p>
+            </div>
+          `
+        : `<div class="scheduler-empty"><p>${error.message}</p></div>`;
     });
 
   timerElements.modeButtons.forEach((button) => {
@@ -544,7 +557,12 @@ export function mountTimerFeature(container) {
       await saveSession(false);
       syncTimerView();
     } catch (error) {
-      setStatus(error.message, "error");
+      setStatus(
+        isDatabaseConnectionIssue(error.message)
+          ? "The database is temporarily unavailable. Please refresh in a moment."
+          : error.message,
+        "error",
+      );
     }
   });
 
@@ -557,7 +575,12 @@ export function mountTimerFeature(container) {
       await saveSession(true);
       syncTimerView();
     } catch (error) {
-      setStatus(error.message, "error");
+      setStatus(
+        isDatabaseConnectionIssue(error.message)
+          ? "The database is temporarily unavailable. Please refresh in a moment."
+          : error.message,
+        "error",
+      );
     }
   });
 
