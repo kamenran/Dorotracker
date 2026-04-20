@@ -6,22 +6,28 @@ import { config } from "./config.js";
 import {
   applyCompletion,
   applyMissedWork,
+  changeUserPassword,
   clearStudySessions,
   clearAssignments,
+  createCommitment,
   createAssignment,
+  deleteCommitment,
   deleteAssignment,
   deleteSession,
+  deleteUserAccount,
   getDashboardData,
   getDatabaseMode,
   getLatestScheduleBlocks,
   getSessionUser,
   getTimerData,
+  listCommitments,
   loginUser,
   listAssignments,
   createStudySession,
   registerUser,
   saveSchedule,
   testConnection,
+  updateUserProfile,
   updateAssignment,
 } from "./db.js";
 import { generateSchedule, reschedule } from "./features/scheduler/index.js";
@@ -105,6 +111,46 @@ function normalizeSchedulerPayload(body) {
     minimumBlock: Number(body.minimumBlock),
     pomodoroLength: Number(body.pomodoroLength),
     deadlineBufferDays: Number(body.deadlineBufferDays || 1),
+  };
+}
+
+function normalizeCommitmentPayload(body) {
+  const type = String(body.type || "").trim();
+  const label = String(body.label || "").trim();
+  const blockedDate = String(body.blockedDate || "").trim();
+  const dayOfWeek = Number(body.dayOfWeek);
+
+  if (!label) {
+    throw new Error("Commitment label is required.");
+  }
+
+  if (!["date", "weekday"].includes(type)) {
+    throw new Error("Choose a valid commitment type.");
+  }
+
+  if (type === "date") {
+    const parsedDate = parseDateParts(blockedDate);
+    if (!parsedDate) {
+      throw new Error("Enter a real blocked date.");
+    }
+
+    return {
+      type,
+      label,
+      blockedDate,
+      dayOfWeek: null,
+    };
+  }
+
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+    throw new Error("Choose a valid weekday.");
+  }
+
+  return {
+    type,
+    label,
+    blockedDate: null,
+    dayOfWeek,
   };
 }
 
@@ -276,6 +322,46 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "PUT" && url.pathname === "/api/auth/me") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const fullName = String(body.fullName || "").trim();
+      const email = String(body.email || "").trim();
+
+      if (!fullName || !email) {
+        sendJson(response, 400, { error: "Full name and email are required." });
+        return;
+      }
+
+      const user = await updateUserProfile(auth.user.id, { fullName, email });
+      sendJson(response, 200, { user });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/reset-password") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const currentPassword = String(body.currentPassword || "");
+      const newPassword = String(body.newPassword || "");
+
+      if (!currentPassword || newPassword.length < 8) {
+        sendJson(response, 400, { error: "Current password and a new password with at least 8 characters are required." });
+        return;
+      }
+
+      await changeUserPassword(auth.user.id, { currentPassword, newPassword });
+      sendJson(response, 200, { success: true });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/auth/logout") {
       const auth = await requireUser(request, response);
       if (!auth) {
@@ -283,6 +369,24 @@ const server = http.createServer(async (request, response) => {
       }
 
       await deleteSession(auth.token);
+      sendJson(response, 200, { success: true });
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/api/auth/me") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const password = String(body.password || "");
+      if (!password) {
+        sendJson(response, 400, { error: "Enter your password to delete this account." });
+        return;
+      }
+
+      await deleteUserAccount(auth.user.id, password);
       sendJson(response, 200, { success: true });
       return;
     }
@@ -302,6 +406,15 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       sendJson(response, 200, await getDashboardData(auth.user.id));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/commitments") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+      sendJson(response, 200, { commitments: await listCommitments(auth.user.id) });
       return;
     }
 
@@ -369,6 +482,30 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/commitments") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const commitment = await createCommitment(auth.user.id, normalizeCommitmentPayload(body));
+      sendJson(response, 201, { commitment, commitments: await listCommitments(auth.user.id) });
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/commitments/")) {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const id = Number(url.pathname.split("/").pop());
+      await deleteCommitment(auth.user.id, id);
+      sendJson(response, 200, { commitments: await listCommitments(auth.user.id) });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/scheduler/generate") {
       const auth = await requireUser(request, response);
       if (!auth) {
@@ -376,8 +513,10 @@ const server = http.createServer(async (request, response) => {
       }
       const body = await readJsonBody(request);
       const assignments = await listAssignments(auth.user.id);
+      const commitments = await listCommitments(auth.user.id);
       const result = generateSchedule({
         assignments,
+        commitments,
         ...normalizeSchedulerPayload(body),
       });
       await saveSchedule(auth.user.id, "generate", result.blocks.map((block) => {
@@ -406,6 +545,7 @@ const server = http.createServer(async (request, response) => {
           ? await applyMissedWork(auth.user.id, body.missedAssignmentId, requestedMissedMinutes)
           : { applied: false, appliedMinutes: 0 };
       const assignments = await listAssignments(auth.user.id);
+      const commitments = await listCommitments(auth.user.id);
       const selectedAssignment = assignments.find(
         (assignment) => Number(assignment.id) === Number(body.completedAssignmentId || body.missedAssignmentId || 0),
       );
@@ -422,6 +562,7 @@ const server = http.createServer(async (request, response) => {
             : 0;
           const result = reschedule({
             assignments,
+            commitments,
             ...normalizeSchedulerPayload(body),
             missedAssignmentTitle:
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",

@@ -395,8 +395,8 @@ async function saveSession(forceCompleted) {
   }
 
   renderHistory(data.timer);
-  if (timerState.mode === "focus" && data.session?.assignmentId && timerState.autoApplyProgress && forceCompleted) {
-    setStatus("Completed session saved and assignment progress updated.", "success");
+  if (timerState.mode === "focus" && data.session?.assignmentId && timerState.autoApplyProgress) {
+    setStatus("Session saved and assignment progress updated.", "success");
   } else {
     setStatus("Session saved to recent history.", "success");
   }
@@ -608,6 +608,10 @@ export function mountTimerFeature(container) {
   });
 
   timerElements.clearHistoryButton.addEventListener("click", async () => {
+    if (!window.confirm("Clear your recent study history?")) {
+      return;
+    }
+
     try {
       const response = await authenticatedFetch("/api/timer/sessions", {
         method: "DELETE",
