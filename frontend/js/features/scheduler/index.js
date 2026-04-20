@@ -134,7 +134,6 @@ export function mountSchedulerFeature(container) {
           <a class="hero-button" href="#assignments">Open Assignments</a>
         </div>
       </section>
-      <div class="scheduler-assignment-summary" id="scheduler-assignment-summary"></div>
       <form class="scheduler-form" id="scheduler-form">
         <p class="scheduler-helper">
           Generate schedule creates a plan from your saved assignments. Then use the reschedule controls to tell the planner
@@ -161,6 +160,7 @@ export function mountSchedulerFeature(container) {
           <button type="submit">Generate schedule</button>
         </div>
       </form>
+      <div class="scheduler-assignment-summary" id="scheduler-assignment-summary"></div>
       <div class="scheduler-reschedule-panel">
         <p class="feature-label">Reschedule update</p>
         <div class="scheduler-reschedule-grid">
