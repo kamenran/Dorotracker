@@ -12,6 +12,20 @@ function clearSession() {
   window.localStorage.removeItem("dorotracker.user");
 }
 
+function readStoredUser() {
+  const storedUser = window.localStorage.getItem("dorotracker.user");
+  if (!storedUser) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(storedUser);
+  } catch {
+    clearSession();
+    return null;
+  }
+}
+
 export function getSessionToken() {
   return getToken();
 }
@@ -102,8 +116,8 @@ export function mountAuthFeature(container) {
   }
 
   function renderSessionState() {
-    const storedUser = window.localStorage.getItem("dorotracker.user");
-    if (!storedUser) {
+    const user = readStoredUser();
+    if (!user) {
       statusCard.innerHTML = `
         <p class="feature-label">Session</p>
         <h3>Not signed in yet</h3>
@@ -117,7 +131,6 @@ export function mountAuthFeature(container) {
       return;
     }
 
-    const user = JSON.parse(storedUser);
     statusCard.innerHTML = `
       <p class="feature-label">Session</p>
       <h3>${user.fullName}</h3>

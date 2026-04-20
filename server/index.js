@@ -6,6 +6,7 @@ import { config } from "./config.js";
 import {
   applyCompletion,
   applyMissedWork,
+  clearStudySessions,
   clearAssignments,
   createAssignment,
   deleteAssignment,
@@ -471,6 +472,19 @@ const server = http.createServer(async (request, response) => {
       });
       sendJson(response, 201, {
         session,
+        timer: await getTimerData(auth.user.id),
+        assignments: await listAssignments(auth.user.id),
+      });
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/api/timer/sessions") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+      await clearStudySessions(auth.user.id);
+      sendJson(response, 200, {
         timer: await getTimerData(auth.user.id),
         assignments: await listAssignments(auth.user.id),
       });

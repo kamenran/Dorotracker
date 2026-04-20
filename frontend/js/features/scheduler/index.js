@@ -29,11 +29,23 @@ function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function summarizeBlocks(blocks) {
+function summarizeBlocks(blocks, assignments = []) {
+  const activeAssignments = assignments.filter((assignment) => !isAssignmentCompleted(assignment));
+  const scheduledMinutesByAssignment = blocks.reduce((totals, block) => {
+    totals[block.assignmentTitle] = (totals[block.assignmentTitle] || 0) + Number(block.minutes || 0);
+    return totals;
+  }, {});
+
   return {
     assignmentCount: new Set(blocks.map((block) => block.assignmentTitle)).size,
     totalMinutes: blocks.reduce((total, block) => total + Number(block.minutes || 0), 0),
-    overloadedAssignments: blocks.filter((block) => block.overdue).length,
+    overloadedAssignments: activeAssignments.length
+      ? activeAssignments.filter((assignment) => {
+          const remainingMinutes =
+            Math.max(Number(assignment.estimatedMinutes || 0) - Number(assignment.minutesCompleted || 0), 0);
+          return Number(scheduledMinutesByAssignment[assignment.title] || 0) < remainingMinutes;
+        }).length
+      : blocks.filter((block) => block.overdue).length,
   };
 }
 
@@ -298,7 +310,7 @@ export function mountSchedulerFeature(container) {
     renderResults(output, {
       blocks: latestBlocks,
       warnings: [],
-      summary: summarizeBlocks(latestBlocks),
+      summary: summarizeBlocks(latestBlocks, schedulerAssignments),
     });
   }
 

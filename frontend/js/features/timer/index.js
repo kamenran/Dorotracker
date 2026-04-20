@@ -71,6 +71,18 @@ function formatSessionLabel(type) {
   return "Focus session";
 }
 
+function getFinishedSessionMessage(mode) {
+  if (mode === "short_break") {
+    return "Short break finished. Save it or reset when you're ready to focus again.";
+  }
+
+  if (mode === "long_break") {
+    return "Long break finished. Save it or reset when you're ready to start again.";
+  }
+
+  return "Focus session finished. Save it to history or reset for the next round.";
+}
+
 function formatTimestamp(value) {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -89,7 +101,7 @@ function renderCloudCompanion() {
     <div class="cloud-mascot cloud-mascot-large" aria-label="Cute cloud study buddy" role="img">
       <div class="cloud-mascot-body">
         <span class="cloud-eye left"></span>
-        <span class="cloud-eye right"></span>
+        <span class="cloud-eye right heart-eye"></span>
         <span class="cloud-blush left"></span>
         <span class="cloud-blush right"></span>
         <span class="cloud-smile"></span>
@@ -210,7 +222,7 @@ function tick() {
     stopInterval();
     persistState();
     syncTimerView();
-    setStatus("Session finished. Save it to history or reset for the next round.", "success");
+    setStatus(getFinishedSessionMessage(timerState.mode), "success");
     return;
   }
 
@@ -353,9 +365,14 @@ async function saveSession(forceCompleted) {
   }
 
   const elapsedMinutes = Math.max(
-    1,
+    0,
     Math.round((timerState.plannedMinutes * 60 - timerState.remainingSeconds) / 60),
   );
+
+  if (!forceCompleted && elapsedMinutes <= 0) {
+    setStatus("Let the timer run a bit before saving a partial session.", "error");
+    return;
+  }
 
   const response = await authenticatedFetch("/api/timer/sessions", {
     method: "POST",
@@ -378,10 +395,10 @@ async function saveSession(forceCompleted) {
   }
 
   renderHistory(data.timer);
-  if (timerState.mode === "focus" && timerState.assignmentId && timerState.autoApplyProgress && forceCompleted) {
+  if (timerState.mode === "focus" && data.session?.assignmentId && timerState.autoApplyProgress && forceCompleted) {
     setStatus("Completed session saved and assignment progress updated.", "success");
   } else {
-    setStatus("Session saved to MySQL.", "success");
+    setStatus("Session saved to recent history.", "success");
   }
 }
 
@@ -478,7 +495,12 @@ export function mountTimerFeature(container) {
           </div>
 
           <div class="timer-control-block">
-            <p class="feature-label">Recent history</p>
+            <div class="assignments-form-header">
+              <div>
+                <p class="feature-label">Recent history</p>
+              </div>
+              <button type="button" class="secondary" id="timer-clear-history">Clear</button>
+            </div>
             <div class="timer-summary-grid" id="timer-summary"></div>
             <div class="timer-history-list" id="timer-history"></div>
           </div>
@@ -505,6 +527,7 @@ export function mountTimerFeature(container) {
     longBreakMinutes: container.querySelector("#timer-long-break-minutes"),
     summary: container.querySelector("#timer-summary"),
     history: container.querySelector("#timer-history"),
+    clearHistoryButton: container.querySelector("#timer-clear-history"),
     modeButtons: [...container.querySelectorAll(".timer-mode-button")],
   };
 
@@ -574,6 +597,28 @@ export function mountTimerFeature(container) {
       stopInterval();
       await saveSession(true);
       syncTimerView();
+    } catch (error) {
+      setStatus(
+        isDatabaseConnectionIssue(error.message)
+          ? "The database is temporarily unavailable. Please refresh in a moment."
+          : error.message,
+        "error",
+      );
+    }
+  });
+
+  timerElements.clearHistoryButton.addEventListener("click", async () => {
+    try {
+      const response = await authenticatedFetch("/api/timer/sessions", {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not clear study history.");
+      }
+
+      renderHistory(data.timer);
+      setStatus("Study history cleared.", "success");
     } catch (error) {
       setStatus(
         isDatabaseConnectionIssue(error.message)
