@@ -84,19 +84,19 @@ function isAssignmentCompleted(assignment) {
   return Number(assignment.minutesCompleted || 0) >= Number(assignment.estimatedMinutes || 0);
 }
 
-function renderHeartCompanion() {
+function renderCloudCompanion() {
   return `
-    <div class="heart-mascot heart-mascot-large" aria-label="Cute heart study buddy" role="img">
-      <div class="heart-mascot-body">
-        <span class="heart-eye left"></span>
-        <span class="heart-eye right"></span>
-        <span class="heart-blush left"></span>
-        <span class="heart-blush right"></span>
-        <span class="heart-smile"></span>
+    <div class="cloud-mascot cloud-mascot-large" aria-label="Cute cloud study buddy" role="img">
+      <div class="cloud-mascot-body">
+        <span class="cloud-eye left"></span>
+        <span class="cloud-eye right"></span>
+        <span class="cloud-blush left"></span>
+        <span class="cloud-blush right"></span>
+        <span class="cloud-smile"></span>
       </div>
-      <div class="heart-sparkle one"></div>
-      <div class="heart-sparkle two"></div>
-      <div class="heart-sparkle three"></div>
+      <div class="cloud-sparkle one"></div>
+      <div class="cloud-sparkle two"></div>
+      <div class="cloud-sparkle three"></div>
     </div>
   `;
 }
@@ -416,7 +416,7 @@ export function mountTimerFeature(container) {
           </p>
         </div>
         <div class="timer-hero-mascot">
-          ${renderHeartCompanion()}
+          ${renderCloudCompanion()}
         </div>
         <div class="timer-mode-row">
           <button type="button" class="timer-mode-button active" data-mode="focus">Focus</button>
