@@ -1203,6 +1203,12 @@ body {
   color: var(--ink);
 }
 
+.timer-ring-core #timer-status {
+  max-width: 190px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .timer-assignment-hint {
   margin: 16px 0 0;
   text-align: center;
