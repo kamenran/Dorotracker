@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 
+function cleanEnvValue(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "");
+}
+
 function loadEnvFile() {
   const envPath = path.resolve(".env");
   if (!fs.existsSync(envPath)) {
@@ -14,7 +20,7 @@ function loadEnvFile() {
     }
     const [key, ...rest] = line.split("=");
     if (!process.env[key]) {
-      process.env[key] = rest.join("=");
+      process.env[key] = cleanEnvValue(rest.join("="));
     }
   }
 }
@@ -22,16 +28,16 @@ function loadEnvFile() {
 loadEnvFile();
 
 export const config = {
-  host: process.env.HOST || "127.0.0.1",
-  port: Number(process.env.PORT || 8000),
-  mysqlBin: process.env.MYSQL_BIN || "mysql",
-  mysqlHost: process.env.MYSQL_HOST || "127.0.0.1",
-  mysqlSocket: process.env.MYSQL_SOCKET || "",
-  mysqlPort: Number(process.env.MYSQL_PORT || 3306),
-  mysqlUser: process.env.MYSQL_USER || "root",
+  host: cleanEnvValue(process.env.HOST) || "127.0.0.1",
+  port: Number(cleanEnvValue(process.env.PORT) || 8000),
+  mysqlBin: cleanEnvValue(process.env.MYSQL_BIN) || "mysql",
+  mysqlHost: cleanEnvValue(process.env.MYSQL_HOST) || "127.0.0.1",
+  mysqlSocket: cleanEnvValue(process.env.MYSQL_SOCKET),
+  mysqlPort: Number(cleanEnvValue(process.env.MYSQL_PORT) || 3306),
+  mysqlUser: cleanEnvValue(process.env.MYSQL_USER) || "root",
   mysqlPassword: process.env.MYSQL_PASSWORD || "",
-  mysqlDatabase: process.env.MYSQL_DATABASE || "dorotracker",
-  mysqlSslCa: process.env.MYSQL_SSL_CA || "",
+  mysqlDatabase: cleanEnvValue(process.env.MYSQL_DATABASE) || "dorotracker",
+  mysqlSslCa: cleanEnvValue(process.env.MYSQL_SSL_CA),
   mysqlSslCaContent: process.env.MYSQL_SSL_CA_CONTENT || "",
-  mysqlSslMode: process.env.MYSQL_SSL_MODE || "",
+  mysqlSslMode: cleanEnvValue(process.env.MYSQL_SSL_MODE),
 };
