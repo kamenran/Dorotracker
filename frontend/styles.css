@@ -486,6 +486,10 @@ body {
   margin-top: 16px;
 }
 
+.scheduler-form-copy {
+  grid-column: 1 / -1;
+}
+
 .scheduler-source-card {
   display: flex;
   justify-content: space-between;
@@ -552,6 +556,7 @@ body {
 }
 
 .scheduler-form input,
+.scheduler-form select,
 .scheduler-reschedule-grid input,
 .scheduler-reschedule-grid select {
   width: 100%;
@@ -631,6 +636,56 @@ body {
   font-size: 0.92rem;
 }
 
+.scheduler-assignment-chip button {
+  justify-self: start;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.scheduler-commitments-card {
+  margin-top: 16px;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.scheduler-commitments-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.scheduler-commitments-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.scheduler-commitments-form input,
+.scheduler-commitments-form select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #fffdfd;
+  color: var(--ink);
+}
+
+.scheduler-commitments-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
 .scheduler-reschedule-panel {
   margin-top: 16px;
   padding: 16px;
@@ -693,6 +748,14 @@ body {
   justify-content: flex-end;
 }
 
+.scheduler-view-toggle {
+  display: inline-flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(231, 127, 151, 0.08);
+}
+
 .scheduler-results-caption {
   max-width: 320px;
   color: var(--muted);
@@ -712,10 +775,67 @@ body {
   -webkit-appearance: none;
 }
 
+.scheduler-view-toggle .secondary {
+  margin: 0;
+}
+
+.scheduler-view-toggle .is-active {
+  background: var(--accent);
+  color: white;
+}
+
 .scheduler-results-board {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
+}
+
+.scheduler-week-card {
+  display: grid;
+  gap: 14px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, #fffdfd 0%, #fff7fa 100%);
+  padding: 16px;
+  box-shadow: 0 16px 35px rgba(231, 127, 151, 0.08);
+}
+
+.scheduler-week-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.scheduler-week-day {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.scheduler-week-day strong {
+  color: var(--ink);
+}
+
+.scheduler-week-day > span {
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.scheduler-week-list {
+  display: grid;
+  gap: 8px;
+}
+
+.scheduler-week-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.92rem;
 }
 
 .scheduler-day-card {
@@ -987,6 +1107,12 @@ body {
   gap: 18px;
 }
 
+.auth-management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
 .auth-card,
 .auth-status-card {
   padding: 22px;
@@ -1040,6 +1166,10 @@ body {
 .auth-status-card .secondary {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.auth-danger-card button {
+  background: #b84e67;
 }
 
 .auth-session-facts {
@@ -1355,11 +1485,15 @@ body {
   .feature-launch-grid,
   .auth-hero-card,
   .auth-grid,
+  .auth-management-grid,
   .assignments-form-grid,
   .scheduler-form,
+  .scheduler-commitments-form,
   .scheduler-reschedule-grid,
   .scheduler-assignment-summary-grid,
+  .scheduler-commitments-list,
   .scheduler-summary,
+  .scheduler-week-grid,
   .timer-room-grid,
   .timer-length-grid,
   .timer-summary-grid {

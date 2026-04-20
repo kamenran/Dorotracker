@@ -30,6 +30,19 @@ function getRemainingMinutes(assignment) {
   );
 }
 
+function isDateBlocked(dateString, commitments = []) {
+  const date = parseDate(dateString);
+  const weekday = date.getDay();
+
+  return commitments.some((commitment) => {
+    if (commitment.blockedDate) {
+      return commitment.blockedDate === dateString;
+    }
+
+    return Number(commitment.dayOfWeek) === weekday;
+  });
+}
+
 function formatAssignmentList(items) {
   if (!items.length) {
     return "";
@@ -53,6 +66,7 @@ export function generateSchedule({
   minimumBlock,
   pomodoroLength,
   deadlineBufferDays = 1,
+  commitments = [],
 }) {
   const sortedAssignments = [...assignments].sort((left, right) => {
     return (
@@ -67,7 +81,9 @@ export function generateSchedule({
   }, startDate);
 
   const allDates = listDates(startDate, horizonEnd);
-  const capacityByDate = Object.fromEntries(allDates.map((date) => [date, dailyStudyLimit]));
+  const capacityByDate = Object.fromEntries(
+    allDates.map((date) => [date, isDateBlocked(date, commitments) ? 0 : dailyStudyLimit]),
+  );
 
   const blocks = [];
   const overloadedAssignments = [];
@@ -179,6 +195,7 @@ export function reschedule({
   minimumBlock,
   pomodoroLength,
   deadlineBufferDays = 1,
+  commitments = [],
   missedAssignmentTitle = "",
   missedMinutes = 0,
 }) {
@@ -206,5 +223,6 @@ export function reschedule({
     minimumBlock,
     pomodoroLength,
     deadlineBufferDays,
+    commitments,
   });
 }

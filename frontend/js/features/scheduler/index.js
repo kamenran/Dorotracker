@@ -1,5 +1,15 @@
 import { authenticatedFetch } from "../auth/index.js";
 
+const WEEKDAY_OPTIONS = [
+  { value: 0, label: "Sunday" },
+  { value: 1, label: "Monday" },
+  { value: 2, label: "Tuesday" },
+  { value: 3, label: "Wednesday" },
+  { value: 4, label: "Thursday" },
+  { value: 5, label: "Friday" },
+  { value: 6, label: "Saturday" },
+];
+
 function isDatabaseConnectionIssue(message) {
   const normalized = String(message || "").toLowerCase();
   return normalized.includes("enotfound") || normalized.includes("econnrefused");
@@ -49,14 +59,8 @@ function summarizeBlocks(blocks, assignments = []) {
   };
 }
 
-function renderResults(target, result) {
-  const warningMarkup = result.warnings.length
-    ? `<div class="scheduler-warnings">${result.warnings
-        .map((warning) => `<p>${warning}</p>`)
-        .join("")}</div>`
-    : `<p class="scheduler-ok">No overload warnings.</p>`;
-
-  const blocksByDate = result.blocks.reduce((groups, block) => {
+function groupBlocksByDate(blocks) {
+  return blocks.reduce((groups, block) => {
     if (!groups[block.scheduledDate]) {
       groups[block.scheduledDate] = [];
     }
@@ -64,8 +68,30 @@ function renderResults(target, result) {
     groups[block.scheduledDate].push(block);
     return groups;
   }, {});
+}
 
-  const dayMarkup = result.blocks.length
+function getWeekStart(dateString) {
+  const date = new Date(`${dateString}T12:00:00`);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatWeekRange(dateString) {
+  const start = new Date(`${dateString}T12:00:00`);
+  const end = new Date(`${dateString}T12:00:00`);
+  end.setDate(end.getDate() + 6);
+
+  const startLabel = start.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const endLabel = end.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${startLabel} - ${endLabel}`;
+}
+
+function renderDayResults(result) {
+  const blocksByDate = groupBlocksByDate(result.blocks);
+
+  return result.blocks.length
     ? Object.entries(blocksByDate)
         .sort(([left], [right]) => left.localeCompare(right))
         .map(
@@ -98,18 +124,59 @@ function renderResults(target, result) {
         )
         .join("")
     : `<p class="scheduler-empty">No study blocks generated yet.</p>`;
+}
 
-  target.innerHTML = `
-    <div class="scheduler-results-shell">
-      <div class="scheduler-summary">
-        <div><strong>${result.summary.assignmentCount}</strong><span>assignments</span></div>
-        <div><strong>${result.summary.totalMinutes}</strong><span>minutes planned</span></div>
-        <div><strong>${result.summary.overloadedAssignments}</strong><span>warnings</span></div>
-      </div>
-      ${warningMarkup}
-      <div class="scheduler-results-board">${dayMarkup}</div>
-    </div>
-  `;
+function renderWeekResults(result) {
+  const blocksByWeek = result.blocks.reduce((groups, block) => {
+    const weekKey = getWeekStart(block.scheduledDate);
+    if (!groups[weekKey]) {
+      groups[weekKey] = [];
+    }
+    groups[weekKey].push(block);
+    return groups;
+  }, {});
+
+  return result.blocks.length
+    ? Object.entries(blocksByWeek)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([weekKey, blocks]) => {
+          const blocksByDate = groupBlocksByDate(blocks);
+          return `
+            <article class="scheduler-week-card">
+              <div class="scheduler-day-header">
+                <p>Week of ${formatWeekRange(weekKey)}</p>
+                <span>${blocks.reduce((total, block) => total + block.minutes, 0)} min planned</span>
+              </div>
+              <div class="scheduler-week-grid">
+                ${Object.entries(blocksByDate)
+                  .sort(([left], [right]) => left.localeCompare(right))
+                  .map(
+                    ([date, dayBlocks]) => `
+                      <div class="scheduler-week-day">
+                        <strong>${formatFriendlyDate(date)}</strong>
+                        <span>${dayBlocks.reduce((total, block) => total + block.minutes, 0)} min</span>
+                        <div class="scheduler-week-list">
+                          ${dayBlocks
+                            .map(
+                              (block) => `
+                                <div class="scheduler-week-item">
+                                  <span>${block.assignmentTitle}</span>
+                                  <span>${block.minutes} min • ${block.pomodoros} ${block.pomodoros === 1 ? "Pomodoro" : "Pomodoros"}</span>
+                                </div>
+                              `,
+                            )
+                            .join("")}
+                        </div>
+                      </div>
+                    `,
+                  )
+                  .join("")}
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : `<p class="scheduler-empty">No study blocks generated yet.</p>`;
 }
 
 function renderError(target, message) {
@@ -141,6 +208,10 @@ export function mountSchedulerFeature(container) {
   }
 
   const schedulerAssignments = [];
+  let schedulerCommitments = [];
+  let currentBlocks = [];
+  let currentWarnings = [];
+  let viewMode = "day";
   const todayDateString = getTodayDateString();
 
   container.insertAdjacentHTML(
@@ -160,10 +231,12 @@ export function mountSchedulerFeature(container) {
         </div>
       </section>
       <form class="scheduler-form" id="scheduler-form">
-        <p class="scheduler-helper">
-          Generate schedule creates a plan from your saved assignments. Then use the reschedule controls to tell the planner
-          whether you completed work or missed work, and it will rebuild the plan from that update.
-        </p>
+        <div class="scheduler-form-copy">
+          <p class="scheduler-helper">
+            Generate schedule creates a plan from your saved assignments. Then use the reschedule controls to tell the planner
+            whether you completed work or missed work, and it will rebuild the plan from that update.
+          </p>
+        </div>
         <label>
           <span>Start date</span>
           <input name="startDate" type="date" value="${todayDateString}" min="${todayDateString}" />
@@ -186,6 +259,43 @@ export function mountSchedulerFeature(container) {
         </div>
       </form>
       <div class="scheduler-assignment-summary" id="scheduler-assignment-summary"></div>
+      <section class="scheduler-commitments-card">
+        <div class="scheduler-assignment-summary-header">
+          <div>
+            <p class="feature-label">Availability and commitments</p>
+            <h3>Block out days the planner should avoid</h3>
+          </div>
+          <span class="scheduler-results-caption">Use weekly patterns or one-time blocked dates.</span>
+        </div>
+        <form class="scheduler-commitments-form" id="commitments-form">
+          <label>
+            <span>Type</span>
+            <select name="type" id="commitment-type">
+              <option value="weekday">Weekly</option>
+              <option value="date">Specific date</option>
+            </select>
+          </label>
+          <label>
+            <span>Label</span>
+            <input name="label" type="text" value="Busy" required />
+          </label>
+          <label id="commitment-weekday-label">
+            <span>Weekday</span>
+            <select name="dayOfWeek">
+              ${WEEKDAY_OPTIONS.map((option) => `<option value="${option.value}">${option.label}</option>`).join("")}
+            </select>
+          </label>
+          <label id="commitment-date-label" hidden>
+            <span>Blocked date</span>
+            <input name="blockedDate" type="date" min="${todayDateString}" />
+          </label>
+          <div class="scheduler-action-row">
+            <button type="submit">Save commitment</button>
+          </div>
+        </form>
+        <div class="assignments-status" id="commitments-status"></div>
+        <div class="scheduler-commitments-list" id="commitments-list"></div>
+      </section>
       <div class="scheduler-reschedule-panel">
         <p class="feature-label">Reschedule update</p>
         <div class="scheduler-reschedule-grid">
@@ -215,7 +325,10 @@ export function mountSchedulerFeature(container) {
           <h3>Your schedule at a glance</h3>
         </div>
         <div class="scheduler-results-actions">
-          <span class="scheduler-results-caption">Grouped by day so it feels like a real plan &lt;3</span>
+          <div class="scheduler-view-toggle">
+            <button type="button" class="secondary is-active" data-view="day">Day</button>
+            <button type="button" class="secondary" data-view="week">Week</button>
+          </div>
           <button type="button" class="secondary" id="scheduler-refresh">Refresh</button>
         </div>
       </div>
@@ -231,6 +344,63 @@ export function mountSchedulerFeature(container) {
   const rescheduleAssignment = container.querySelector("#reschedule-assignment");
   const rescheduleStatus = container.querySelector("#reschedule-status");
   const rescheduleMinutes = container.querySelector("#reschedule-minutes");
+  const commitmentsForm = container.querySelector("#commitments-form");
+  const commitmentsStatus = container.querySelector("#commitments-status");
+  const commitmentsList = container.querySelector("#commitments-list");
+  const commitmentType = container.querySelector("#commitment-type");
+  const commitmentWeekdayLabel = container.querySelector("#commitment-weekday-label");
+  const commitmentDateLabel = container.querySelector("#commitment-date-label");
+  const viewButtons = [...container.querySelectorAll(".scheduler-view-toggle button")];
+
+  function renderResults() {
+    const summary = summarizeBlocks(currentBlocks, schedulerAssignments);
+    const warningMarkup = currentWarnings.length
+      ? `<div class="scheduler-warnings">${currentWarnings.map((warning) => `<p>${warning}</p>`).join("")}</div>`
+      : `<p class="scheduler-ok">No overload warnings.</p>`;
+
+    const boardMarkup = viewMode === "week"
+      ? renderWeekResults({ blocks: currentBlocks })
+      : renderDayResults({ blocks: currentBlocks });
+
+    output.innerHTML = `
+      <div class="scheduler-results-shell">
+        <div class="scheduler-summary">
+          <div><strong>${summary.assignmentCount}</strong><span>assignments</span></div>
+          <div><strong>${summary.totalMinutes}</strong><span>minutes planned</span></div>
+          <div><strong>${summary.overloadedAssignments}</strong><span>warnings</span></div>
+        </div>
+        ${warningMarkup}
+        <div class="scheduler-results-board">${boardMarkup}</div>
+      </div>
+    `;
+  }
+
+  function renderCommitmentsStatus(message, tone = "neutral") {
+    commitmentsStatus.className = `assignments-status ${tone}`;
+    commitmentsStatus.textContent = message;
+  }
+
+  function renderCommitments() {
+    if (!schedulerCommitments.length) {
+      commitmentsList.innerHTML = `<p class="scheduler-empty">No blocked days saved yet.</p>`;
+      return;
+    }
+
+    commitmentsList.innerHTML = schedulerCommitments
+      .map((commitment) => {
+        const description = commitment.type === "date"
+          ? `${commitment.label} on ${formatFriendlyDate(commitment.blockedDate)}`
+          : `${commitment.label} every ${WEEKDAY_OPTIONS.find((option) => option.value === Number(commitment.dayOfWeek))?.label || "day"}`;
+
+        return `
+          <article class="scheduler-assignment-chip">
+            <strong>${description}</strong>
+            <button type="button" class="secondary commitment-delete" data-id="${commitment.id}">Delete</button>
+          </article>
+        `;
+      })
+      .join("");
+  }
 
   async function postScheduler(path, payload) {
     const response = await authenticatedFetch(path, {
@@ -266,6 +436,22 @@ export function mountSchedulerFeature(container) {
     return data;
   }
 
+  async function fetchCommitments() {
+    const response = await authenticatedFetch("/api/commitments");
+    if (response.status === 401) {
+      schedulerCommitments = [];
+      renderCommitments();
+      return null;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Could not load commitments.");
+    }
+
+    return data.commitments || [];
+  }
+
   async function fetchLatestSchedule() {
     const response = await authenticatedFetch("/api/scheduler/latest");
     if (response.status === 401) {
@@ -287,17 +473,29 @@ export function mountSchedulerFeature(container) {
     return [...schedulerAssignments];
   }
 
-  async function refreshPlanner() {
-    const data = await fetchAssignments();
-    if (!data) {
+  async function refreshPlanner({ regenerate = false } = {}) {
+    const [assignmentData, commitments] = await Promise.all([fetchAssignments(), fetchCommitments()]);
+    if (!assignmentData) {
       return;
     }
 
-    schedulerAssignments.splice(0, schedulerAssignments.length, ...(data.assignments || []));
+    schedulerAssignments.splice(0, schedulerAssignments.length, ...(assignmentData.assignments || []));
+    schedulerCommitments = commitments || [];
     renderAssignmentSummary();
+    renderCommitments();
 
     if (!schedulerAssignments.length) {
       renderError(output, "Add at least one assignment on the Assignments page before generating a schedule.");
+      return;
+    }
+
+    if (regenerate) {
+      const result = await postScheduler("/api/scheduler/generate", {
+        ...readSettings(),
+      });
+      currentBlocks = result.blocks || [];
+      currentWarnings = result.warnings || [];
+      renderResults();
       return;
     }
 
@@ -307,11 +505,9 @@ export function mountSchedulerFeature(container) {
       return;
     }
 
-    renderResults(output, {
-      blocks: latestBlocks,
-      warnings: [],
-      summary: summarizeBlocks(latestBlocks, schedulerAssignments),
-    });
+    currentBlocks = latestBlocks;
+    currentWarnings = [];
+    renderResults();
   }
 
   function renderAssignmentSummary() {
@@ -367,12 +563,7 @@ export function mountSchedulerFeature(container) {
 
   function syncRescheduleAssignments(assignments) {
     rescheduleAssignment.innerHTML = assignments.length
-      ? assignments
-          .map(
-            (assignment) =>
-              `<option value="${assignment.id}">${assignment.title}</option>`,
-          )
-          .join("")
+      ? assignments.map((assignment) => `<option value="${assignment.id}">${assignment.title}</option>`).join("")
       : `<option value="">No assignments yet</option>`;
   }
 
@@ -390,6 +581,18 @@ export function mountSchedulerFeature(container) {
     };
   }
 
+  function syncCommitmentFieldVisibility() {
+    const showDate = commitmentType.value === "date";
+    commitmentDateLabel.hidden = !showDate;
+    commitmentWeekdayLabel.hidden = showDate;
+
+    if (showDate) {
+      commitmentsForm.elements.namedItem("dayOfWeek").value = "0";
+    } else {
+      commitmentsForm.elements.namedItem("blockedDate").value = "";
+    }
+  }
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const assignments = readAssignments();
@@ -402,9 +605,73 @@ export function mountSchedulerFeature(container) {
       const result = await postScheduler("/api/scheduler/generate", {
         ...readSettings(),
       });
-      renderResults(output, result);
+      currentBlocks = result.blocks || [];
+      currentWarnings = result.warnings || [];
+      renderResults();
     } catch (error) {
       renderError(output, error.message);
+    }
+  });
+
+  commitmentsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formData = new FormData(commitmentsForm);
+
+    try {
+      const response = await authenticatedFetch("/api/commitments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: String(formData.get("type") || ""),
+          label: String(formData.get("label") || "").trim(),
+          dayOfWeek: Number(formData.get("dayOfWeek") || 0),
+          blockedDate: String(formData.get("blockedDate") || ""),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not save commitment.");
+      }
+
+      schedulerCommitments = data.commitments || [];
+      renderCommitments();
+      renderCommitmentsStatus("Commitment saved.", "success");
+      commitmentsForm.reset();
+      commitmentsForm.elements.namedItem("label").value = "Busy";
+      commitmentType.value = "weekday";
+      syncCommitmentFieldVisibility();
+    } catch (error) {
+      renderCommitmentsStatus(error.message, "error");
+    }
+  });
+
+  commitmentsList.addEventListener("click", async (event) => {
+    const button = event.target.closest(".commitment-delete");
+    if (!button) {
+      return;
+    }
+
+    if (!window.confirm("Delete this blocked-day commitment?")) {
+      return;
+    }
+
+    try {
+      const response = await authenticatedFetch(`/api/commitments/${button.dataset.id}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not delete commitment.");
+      }
+
+      schedulerCommitments = data.commitments || [];
+      renderCommitments();
+      renderCommitmentsStatus("Commitment deleted.", "success");
+    } catch (error) {
+      renderCommitmentsStatus(error.message, "error");
     }
   });
 
@@ -432,7 +699,9 @@ export function mountSchedulerFeature(container) {
         schedulerAssignments.splice(0, schedulerAssignments.length, ...(refreshedAssignments.assignments || []));
         renderAssignmentSummary();
       }
-      renderResults(output, result);
+      currentBlocks = result.blocks || [];
+      currentWarnings = result.warnings || [];
+      renderResults();
     } catch (error) {
       renderError(output, error.message);
     }
@@ -440,12 +709,26 @@ export function mountSchedulerFeature(container) {
 
   refreshButton.addEventListener("click", async () => {
     try {
-      await refreshPlanner();
+      await refreshPlanner({ regenerate: true });
     } catch (error) {
       renderError(output, error.message);
     }
   });
 
+  commitmentType.addEventListener("change", syncCommitmentFieldVisibility);
+
+  viewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      viewMode = button.dataset.view;
+      viewButtons.forEach((entry) => entry.classList.toggle("is-active", entry === button));
+      if (currentBlocks.length) {
+        renderResults();
+      }
+    });
+  });
+
+  syncCommitmentFieldVisibility();
+  renderCommitmentsStatus("Save blocked days here if you want the planner to work around them.", "neutral");
   refreshPlanner().catch((error) => {
     renderError(output, error.message);
   });

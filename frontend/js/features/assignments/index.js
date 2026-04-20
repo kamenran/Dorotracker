@@ -260,6 +260,10 @@ export function mountAssignmentFeature(container) {
       }
 
       if (button.classList.contains("assignment-delete")) {
+        if (!window.confirm(`Delete "${assignment.title}"?`)) {
+          return;
+        }
+
         const response = await authenticatedFetch(`/api/assignments/${id}`, {
           method: "DELETE",
         });
