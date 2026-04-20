@@ -714,3 +714,14 @@ export async function getTimerData(userId) {
     sessions,
   };
 }
+
+export async function clearStudySessions(userId) {
+  await ensureSchemaReady();
+  await pool.execute(
+    `
+      DELETE FROM study_sessions
+      WHERE user_id = ?
+    `,
+    [userId],
+  );
+}
