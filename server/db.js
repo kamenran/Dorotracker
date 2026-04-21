@@ -76,8 +76,33 @@ function mapStudySessionRow(row) {
   };
 }
 
+function mapCommitmentRow(row) {
+  return {
+    id: row.id,
+    label: row.label,
+    type: row.blockedDate ? "date" : "weekday",
+    blockedDate: row.blockedDate,
+    dayOfWeek: row.dayOfWeek,
+  };
+}
+
 function normalizeTitleForComparison(title) {
   return String(title || "").trim().toLowerCase();
+}
+
+function getAppTodayDateString(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
 }
 
 function isAssignmentCompleted(assignment) {
@@ -122,6 +147,47 @@ async function ensureSchema() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS assignments (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      user_id INT NULL,
+      title VARCHAR(255) NOT NULL,
+      due_date DATE NOT NULL,
+      estimated_minutes INT NOT NULL,
+      minutes_completed INT NOT NULL DEFAULT 0,
+      priority INT NOT NULL DEFAULT 3,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_assignment_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schedule_runs (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      user_id INT NULL,
+      run_type ENUM('generate', 'reschedule') NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_schedule_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schedule_blocks (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      run_id INT NOT NULL,
+      assignment_id INT NULL,
+      assignment_title VARCHAR(255) NOT NULL,
+      due_date DATE NOT NULL,
+      scheduled_date DATE NOT NULL,
+      minutes INT NOT NULL,
+      pomodoros INT NOT NULL,
+      priority INT NOT NULL,
+      overdue TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_schedule_run FOREIGN KEY (run_id) REFERENCES schedule_runs(id) ON DELETE CASCADE
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS study_sessions (
       id INT PRIMARY KEY AUTO_INCREMENT,
       user_id INT NOT NULL,
@@ -134,6 +200,18 @@ async function ensureSchema() {
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT fk_study_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       CONSTRAINT fk_study_session_assignment FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE SET NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_commitments (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      user_id INT NOT NULL,
+      label VARCHAR(255) NOT NULL,
+      day_of_week TINYINT NULL,
+      blocked_date DATE NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_commitment_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
@@ -282,6 +360,186 @@ export async function deleteSession(token) {
   }
 
   await pool.execute("DELETE FROM user_sessions WHERE session_token = ?", [token]);
+}
+
+export async function updateUserProfile(userId, { fullName, email }) {
+  await ensureSchemaReady();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+
+  const [duplicates] = await pool.execute(
+    `
+      SELECT id
+      FROM users
+      WHERE email = ?
+        AND id <> ?
+      LIMIT 1
+    `,
+    [normalizedEmail, userId],
+  );
+
+  if (duplicates[0]) {
+    throw new Error("That email is already registered.");
+  }
+
+  await pool.execute(
+    `
+      UPDATE users
+      SET full_name = ?, email = ?
+      WHERE id = ?
+    `,
+    [String(fullName || "").trim(), normalizedEmail, userId],
+  );
+
+  const [rows] = await pool.execute(
+    `
+      SELECT id, full_name AS fullName, email
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  return rows[0] || null;
+}
+
+export async function changeUserPassword(userId, { currentPassword, newPassword }) {
+  await ensureSchemaReady();
+  const [rows] = await pool.execute(
+    `
+      SELECT password_hash AS passwordHash
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  const user = rows[0];
+  if (!user || !verifyPassword(currentPassword, user.passwordHash)) {
+    throw new Error("Current password is incorrect.");
+  }
+
+  await pool.execute(
+    `
+      UPDATE users
+      SET password_hash = ?
+      WHERE id = ?
+    `,
+    [hashPassword(newPassword), userId],
+  );
+}
+
+export async function deleteUserAccount(userId, password) {
+  await ensureSchemaReady();
+  const [rows] = await pool.execute(
+    `
+      SELECT password_hash AS passwordHash
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [userId],
+  );
+
+  const user = rows[0];
+  if (!user || !verifyPassword(password, user.passwordHash)) {
+    throw new Error("Password is incorrect.");
+  }
+
+  await pool.execute("DELETE FROM users WHERE id = ?", [userId]);
+}
+
+export async function listCommitments(userId) {
+  await ensureSchemaReady();
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        label,
+        day_of_week AS dayOfWeek,
+        DATE_FORMAT(blocked_date, '%Y-%m-%d') AS blockedDate
+      FROM user_commitments
+      WHERE user_id = ?
+      ORDER BY blocked_date IS NULL, blocked_date, day_of_week, id
+    `,
+    [userId],
+  );
+
+  return rows.map(mapCommitmentRow);
+}
+
+export async function createCommitment(userId, commitment) {
+  await ensureSchemaReady();
+
+  if (commitment.type === "date") {
+    const [duplicates] = await pool.execute(
+      `
+        SELECT id
+        FROM user_commitments
+        WHERE user_id = ?
+          AND blocked_date = ?
+        LIMIT 1
+      `,
+      [userId, commitment.blockedDate],
+    );
+
+    if (duplicates[0]) {
+      throw new Error("That blocked date is already saved.");
+    }
+  }
+
+  if (commitment.type === "weekday") {
+    const [duplicates] = await pool.execute(
+      `
+        SELECT id
+        FROM user_commitments
+        WHERE user_id = ?
+          AND day_of_week = ?
+          AND blocked_date IS NULL
+        LIMIT 1
+      `,
+      [userId, commitment.dayOfWeek],
+    );
+
+    if (duplicates[0]) {
+      throw new Error("That weekday commitment is already saved.");
+    }
+  }
+
+  const [result] = await pool.execute(
+    `
+      INSERT INTO user_commitments (user_id, label, day_of_week, blocked_date)
+      VALUES (?, ?, ?, ?)
+    `,
+    [
+      userId,
+      commitment.label,
+      commitment.type === "weekday" ? commitment.dayOfWeek : null,
+      commitment.type === "date" ? commitment.blockedDate : null,
+    ],
+  );
+
+  const [rows] = await pool.execute(
+    `
+      SELECT
+        id,
+        label,
+        day_of_week AS dayOfWeek,
+        DATE_FORMAT(blocked_date, '%Y-%m-%d') AS blockedDate
+      FROM user_commitments
+      WHERE id = ?
+      LIMIT 1
+    `,
+    [result.insertId],
+  );
+
+  return rows[0] ? mapCommitmentRow(rows[0]) : null;
+}
+
+export async function deleteCommitment(userId, id) {
+  await ensureSchemaReady();
+  await pool.execute("DELETE FROM user_commitments WHERE id = ? AND user_id = ?", [id, userId]);
 }
 
 export async function listAssignments(userId) {
@@ -442,7 +700,39 @@ export async function applyCompletion(userId, id, minutes) {
 
 export async function applyMissedWork(userId, id, minutes) {
   await ensureSchemaReady();
-  return { userId, id, minutes, applied: false };
+  const [rows] = await pool.execute(
+    `
+      SELECT minutes_completed AS minutesCompleted
+      FROM assignments
+      WHERE id = ? AND user_id = ?
+      LIMIT 1
+    `,
+    [id, userId],
+  );
+
+  const currentCompletedMinutes = Number(rows[0]?.minutesCompleted || 0);
+  const appliedMinutes = Math.min(Math.max(Number(minutes) || 0, 0), currentCompletedMinutes);
+
+  if (appliedMinutes <= 0) {
+    return {
+      applied: false,
+      appliedMinutes: 0,
+    };
+  }
+
+  await pool.execute(
+    `
+      UPDATE assignments
+      SET minutes_completed = GREATEST(0, minutes_completed - ?)
+      WHERE id = ? AND user_id = ?
+    `,
+    [appliedMinutes, id, userId],
+  );
+
+  return {
+    applied: true,
+    appliedMinutes,
+  };
 }
 
 export async function saveSchedule(userId, runType, blocks) {
@@ -552,7 +842,7 @@ export async function getDashboardData(userId) {
   const activeAssignments = assignments.filter((assignment) => !isAssignmentCompleted(assignment));
   const latestSchedule = await getLatestScheduleBlocks(userId);
   const timerData = await getTimerData(userId);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getAppTodayDateString();
   const todayBlocks = latestSchedule.filter((block) => block.scheduledDate === today);
 
   return {
@@ -624,7 +914,7 @@ export async function createStudySession(userId, session) {
     ],
   );
 
-  if (canApplyToAssignment && session.completed && session.sessionType === "focus" && assignmentId && session.actualMinutes > 0) {
+  if (canApplyToAssignment && session.sessionType === "focus" && assignmentId && session.actualMinutes > 0) {
     await applyCompletion(userId, assignmentId, session.actualMinutes);
   }
 
@@ -681,4 +971,15 @@ export async function getTimerData(userId) {
     },
     sessions,
   };
+}
+
+export async function clearStudySessions(userId) {
+  await ensureSchemaReady();
+  await pool.execute(
+    `
+      DELETE FROM study_sessions
+      WHERE user_id = ?
+    `,
+    [userId],
+  );
 }

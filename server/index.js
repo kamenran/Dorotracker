@@ -5,21 +5,29 @@ import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import {
   applyCompletion,
+  applyMissedWork,
+  changeUserPassword,
+  clearStudySessions,
   clearAssignments,
+  createCommitment,
   createAssignment,
+  deleteCommitment,
   deleteAssignment,
   deleteSession,
+  deleteUserAccount,
   getDashboardData,
   getDatabaseMode,
   getLatestScheduleBlocks,
   getSessionUser,
   getTimerData,
+  listCommitments,
   loginUser,
   listAssignments,
   createStudySession,
   registerUser,
   saveSchedule,
   testConnection,
+  updateUserProfile,
   updateAssignment,
 } from "./db.js";
 import { generateSchedule, reschedule } from "./features/scheduler/index.js";
@@ -103,6 +111,46 @@ function normalizeSchedulerPayload(body) {
     minimumBlock: Number(body.minimumBlock),
     pomodoroLength: Number(body.pomodoroLength),
     deadlineBufferDays: Number(body.deadlineBufferDays || 1),
+  };
+}
+
+function normalizeCommitmentPayload(body) {
+  const type = String(body.type || "").trim();
+  const label = String(body.label || "").trim();
+  const blockedDate = String(body.blockedDate || "").trim();
+  const dayOfWeek = Number(body.dayOfWeek);
+
+  if (!label) {
+    throw new Error("Commitment label is required.");
+  }
+
+  if (!["date", "weekday"].includes(type)) {
+    throw new Error("Choose a valid commitment type.");
+  }
+
+  if (type === "date") {
+    const parsedDate = parseDateParts(blockedDate);
+    if (!parsedDate) {
+      throw new Error("Enter a real blocked date.");
+    }
+
+    return {
+      type,
+      label,
+      blockedDate,
+      dayOfWeek: null,
+    };
+  }
+
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+    throw new Error("Choose a valid weekday.");
+  }
+
+  return {
+    type,
+    label,
+    blockedDate: null,
+    dayOfWeek,
   };
 }
 
@@ -199,6 +247,72 @@ function normalizeBlocksForComparison(blocks) {
   }));
 }
 
+function normalizeManualScheduleBlocks(blocks, assignments) {
+  if (!Array.isArray(blocks) || !blocks.length) {
+    throw new Error("No schedule blocks were provided.");
+  }
+
+  const normalizedBlocks = blocks.map((block) => {
+    const assignmentId = Number(block.assignmentId || 0) || null;
+    const assignmentTitle = String(block.assignmentTitle || "").trim();
+    const dueDate = String(block.dueDate || "").trim();
+    const scheduledDate = String(block.scheduledDate || "").trim();
+    const minutes = Number(block.minutes || 0);
+    const pomodoros = Number(block.pomodoros || 0);
+    const priority = Number(block.priority || 0);
+    const overdue = Boolean(block.overdue);
+
+    if (!assignmentTitle || !parseDateParts(dueDate) || !parseDateParts(scheduledDate)) {
+      throw new Error("Manual schedule blocks must include valid assignment and date values.");
+    }
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      throw new Error("Manual schedule blocks must use positive minutes.");
+    }
+
+    const matchedAssignment =
+      assignments.find((assignment) => Number(assignment.id) === assignmentId) ||
+      assignments.find((assignment) => assignment.title === assignmentTitle);
+
+    if (!matchedAssignment) {
+      throw new Error(`Could not match the schedule block for ${assignmentTitle}.`);
+    }
+
+    return {
+      assignmentId: matchedAssignment.id,
+      assignmentTitle: matchedAssignment.title,
+      dueDate,
+      scheduledDate,
+      minutes,
+      pomodoros: Number.isFinite(pomodoros) && pomodoros > 0 ? pomodoros : Math.max(Math.ceil(minutes / 25), 1),
+      priority: Number.isFinite(priority) && priority > 0 ? priority : Number(matchedAssignment.priority || 3),
+      overdue,
+    };
+  });
+
+  const totalsByAssignment = normalizedBlocks.reduce((totals, block) => {
+    totals[block.assignmentId] = (totals[block.assignmentId] || 0) + Number(block.minutes || 0);
+    return totals;
+  }, {});
+
+  normalizedBlocks.forEach((block) => {
+    const assignment = assignments.find((entry) => Number(entry.id) === Number(block.assignmentId));
+    const remainingMinutes = Math.max(
+      Number(assignment?.estimatedMinutes || 0) - Number(assignment?.minutesCompleted || 0),
+      0,
+    );
+    const scheduledMinutes = Number(totalsByAssignment[block.assignmentId] || 0);
+
+    if (scheduledMinutes > remainingMinutes) {
+      throw new Error(
+        `${block.assignmentTitle} cannot be scheduled for more than ${remainingMinutes} total minute${remainingMinutes === 1 ? "" : "s"}.`,
+      );
+    }
+  });
+
+  return normalizedBlocks;
+}
+
 function blocksMatch(leftBlocks, rightBlocks) {
   return JSON.stringify(normalizeBlocksForComparison(leftBlocks)) === JSON.stringify(normalizeBlocksForComparison(rightBlocks));
 }
@@ -274,6 +388,46 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "PUT" && url.pathname === "/api/auth/me") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const fullName = String(body.fullName || "").trim();
+      const email = String(body.email || "").trim();
+
+      if (!fullName || !email) {
+        sendJson(response, 400, { error: "Full name and email are required." });
+        return;
+      }
+
+      const user = await updateUserProfile(auth.user.id, { fullName, email });
+      sendJson(response, 200, { user });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/auth/reset-password") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const currentPassword = String(body.currentPassword || "");
+      const newPassword = String(body.newPassword || "");
+
+      if (!currentPassword || newPassword.length < 8) {
+        sendJson(response, 400, { error: "Current password and a new password with at least 8 characters are required." });
+        return;
+      }
+
+      await changeUserPassword(auth.user.id, { currentPassword, newPassword });
+      sendJson(response, 200, { success: true });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/auth/logout") {
       const auth = await requireUser(request, response);
       if (!auth) {
@@ -281,6 +435,24 @@ const server = http.createServer(async (request, response) => {
       }
 
       await deleteSession(auth.token);
+      sendJson(response, 200, { success: true });
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/api/auth/me") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const password = String(body.password || "");
+      if (!password) {
+        sendJson(response, 400, { error: "Enter your password to delete this account." });
+        return;
+      }
+
+      await deleteUserAccount(auth.user.id, password);
       sendJson(response, 200, { success: true });
       return;
     }
@@ -300,6 +472,15 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       sendJson(response, 200, await getDashboardData(auth.user.id));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/commitments") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+      sendJson(response, 200, { commitments: await listCommitments(auth.user.id) });
       return;
     }
 
@@ -367,6 +548,30 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/commitments") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const commitment = await createCommitment(auth.user.id, normalizeCommitmentPayload(body));
+      sendJson(response, 201, { commitment, commitments: await listCommitments(auth.user.id) });
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/commitments/")) {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const id = Number(url.pathname.split("/").pop());
+      await deleteCommitment(auth.user.id, id);
+      sendJson(response, 200, { commitments: await listCommitments(auth.user.id) });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/scheduler/generate") {
       const auth = await requireUser(request, response);
       if (!auth) {
@@ -374,8 +579,10 @@ const server = http.createServer(async (request, response) => {
       }
       const body = await readJsonBody(request);
       const assignments = await listAssignments(auth.user.id);
+      const commitments = await listCommitments(auth.user.id);
       const result = generateSchedule({
         assignments,
+        commitments,
         ...normalizeSchedulerPayload(body),
       });
       await saveSchedule(auth.user.id, "generate", result.blocks.map((block) => {
@@ -395,10 +602,16 @@ const server = http.createServer(async (request, response) => {
         return;
       }
       const body = await readJsonBody(request);
+      const requestedMissedMinutes = body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0;
       if (body.completedAssignmentId && Number(body.completedMinutes || 0) > 0) {
         await applyCompletion(auth.user.id, body.completedAssignmentId, Number(body.completedMinutes));
       }
+      const missedWorkResult =
+        body.missedAssignmentId && requestedMissedMinutes > 0
+          ? await applyMissedWork(auth.user.id, body.missedAssignmentId, requestedMissedMinutes)
+          : { applied: false, appliedMinutes: 0 };
       const assignments = await listAssignments(auth.user.id);
+      const commitments = await listCommitments(auth.user.id);
       const selectedAssignment = assignments.find(
         (assignment) => Number(assignment.id) === Number(body.completedAssignmentId || body.missedAssignmentId || 0),
       );
@@ -407,19 +620,19 @@ const server = http.createServer(async (request, response) => {
         200,
         await (async () => {
           const latestBlocks = await getLatestScheduleBlocks(auth.user.id);
-          const selectedAssignmentRemaining = selectedAssignment
+          const selectedAssignmentCompleted = selectedAssignment
             ? Math.max(
-                Number(selectedAssignment.estimatedMinutes || 0) - Number(selectedAssignment.minutesCompleted || 0),
+                Number(selectedAssignment.minutesCompleted || 0),
                 0,
               )
             : 0;
-          const requestedMissedMinutes = body.missedAssignmentId ? Number(body.missedMinutes || 0) : 0;
           const result = reschedule({
             assignments,
+            commitments,
             ...normalizeSchedulerPayload(body),
             missedAssignmentTitle:
               body.missedAssignmentId && selectedAssignment ? selectedAssignment.title : "",
-            missedMinutes: requestedMissedMinutes,
+            missedMinutes: missedWorkResult.appliedMinutes,
           });
           const blocksToSave = result.blocks.map((block) => {
             const match = assignments.find((assignment) => assignment.title === block.assignmentTitle);
@@ -433,10 +646,10 @@ const server = http.createServer(async (request, response) => {
             return {
               ...result,
               warnings: [
-                selectedAssignmentRemaining <= 0
-                  ? "That missed-work update did not change the plan because this assignment is already fully accounted for."
-                  : requestedMissedMinutes >= selectedAssignmentRemaining
-                    ? "That missed-work update did not change the plan because it already reached this assignment's remaining-minute limit."
+                selectedAssignmentCompleted <= 0
+                  ? "That missed-work update did not change the plan because there are no completed minutes left to add back."
+                  : requestedMissedMinutes > missedWorkResult.appliedMinutes
+                    ? "That missed-work update only restored the remaining completed minutes for this assignment."
                     : "That missed-work update did not change the plan.",
                 ...result.warnings,
               ],
@@ -447,6 +660,20 @@ const server = http.createServer(async (request, response) => {
           return result;
         })(),
       );
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/scheduler/manual-save") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const assignments = await listAssignments(auth.user.id);
+      const blocks = normalizeManualScheduleBlocks(body.blocks, assignments);
+      await saveSchedule(auth.user.id, "reschedule", blocks);
+      sendJson(response, 200, { blocks });
       return;
     }
 
@@ -466,6 +693,19 @@ const server = http.createServer(async (request, response) => {
       });
       sendJson(response, 201, {
         session,
+        timer: await getTimerData(auth.user.id),
+        assignments: await listAssignments(auth.user.id),
+      });
+      return;
+    }
+
+    if (request.method === "DELETE" && url.pathname === "/api/timer/sessions") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+      await clearStudySessions(auth.user.id);
+      sendJson(response, 200, {
         timer: await getTimerData(auth.user.id),
         assignments: await listAssignments(auth.user.id),
       });

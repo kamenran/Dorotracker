@@ -1,10 +1,16 @@
 import { authenticatedFetch } from "../auth/index.js";
 
 const TIMER_STATE_KEY = "dorotracker.timerState";
+const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
 
 let timerIntervalId = null;
 let timerElements = null;
 let timerState = createDefaultState();
+
+function isDatabaseConnectionIssue(message) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("enotfound") || normalized.includes("econnrefused");
+}
 
 function createDefaultState() {
   return {
@@ -43,6 +49,10 @@ function persistState() {
   window.localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(timerState));
 }
 
+function markSchedulerDirty() {
+  window.localStorage.setItem(SCHEDULER_DIRTY_KEY, "1");
+}
+
 function formatClock(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
     .toString()
@@ -66,6 +76,18 @@ function formatSessionLabel(type) {
   return "Focus session";
 }
 
+function getFinishedSessionMessage(mode) {
+  if (mode === "short_break") {
+    return "Short break finished. Save it or reset when you're ready to focus again.";
+  }
+
+  if (mode === "long_break") {
+    return "Long break finished. Save it or reset when you're ready to start again.";
+  }
+
+  return "Focus session finished. Save it to history or reset for the next round.";
+}
+
 function formatTimestamp(value) {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -84,7 +106,7 @@ function renderCloudCompanion() {
     <div class="cloud-mascot cloud-mascot-large" aria-label="Cute cloud study buddy" role="img">
       <div class="cloud-mascot-body">
         <span class="cloud-eye left"></span>
-        <span class="cloud-eye right"></span>
+        <span class="cloud-eye right heart-eye"></span>
         <span class="cloud-blush left"></span>
         <span class="cloud-blush right"></span>
         <span class="cloud-smile"></span>
@@ -205,7 +227,7 @@ function tick() {
     stopInterval();
     persistState();
     syncTimerView();
-    setStatus("Session finished. Save it to history or reset for the next round.", "success");
+    setStatus(getFinishedSessionMessage(timerState.mode), "success");
     return;
   }
 
@@ -272,7 +294,13 @@ function renderHistory(timer) {
                 <strong>${formatSessionLabel(session.sessionType)}</strong>
                 <span>${session.completed ? "Completed" : "Stopped early"}</span>
               </div>
-              <p>${session.assignmentTitle || "No assignment linked"}</p>
+              ${
+                session.assignmentTitle
+                  ? `<p>${session.assignmentTitle}</p>`
+                  : session.sessionType === "focus"
+                    ? `<p>No assignment linked</p>`
+                    : ""
+              }
               <div class="timer-history-meta">
                 <span>${session.actualMinutes} min logged</span>
                 <span>${formatTimestamp(session.createdAt)}</span>
@@ -348,9 +376,14 @@ async function saveSession(forceCompleted) {
   }
 
   const elapsedMinutes = Math.max(
-    1,
+    0,
     Math.round((timerState.plannedMinutes * 60 - timerState.remainingSeconds) / 60),
   );
+
+  if (!forceCompleted && elapsedMinutes <= 0) {
+    setStatus("Let the timer run a bit before saving a partial session.", "error");
+    return;
+  }
 
   const response = await authenticatedFetch("/api/timer/sessions", {
     method: "POST",
@@ -373,10 +406,11 @@ async function saveSession(forceCompleted) {
   }
 
   renderHistory(data.timer);
-  if (timerState.mode === "focus" && timerState.assignmentId && timerState.autoApplyProgress && forceCompleted) {
-    setStatus("Completed session saved and assignment progress updated.", "success");
+  if (timerState.mode === "focus" && data.session?.assignmentId && timerState.autoApplyProgress) {
+    markSchedulerDirty();
+    setStatus("Session saved and assignment progress updated.", "success");
   } else {
-    setStatus("Session saved to MySQL.", "success");
+    setStatus("Session saved to recent history.", "success");
   }
 }
 
@@ -473,7 +507,12 @@ export function mountTimerFeature(container) {
           </div>
 
           <div class="timer-control-block">
-            <p class="feature-label">Recent history</p>
+            <div class="assignments-form-header">
+              <div>
+                <p class="feature-label">Recent history</p>
+              </div>
+              <button type="button" class="secondary" id="timer-clear-history">Clear</button>
+            </div>
             <div class="timer-summary-grid" id="timer-summary"></div>
             <div class="timer-history-list" id="timer-history"></div>
           </div>
@@ -500,6 +539,7 @@ export function mountTimerFeature(container) {
     longBreakMinutes: container.querySelector("#timer-long-break-minutes"),
     summary: container.querySelector("#timer-summary"),
     history: container.querySelector("#timer-history"),
+    clearHistoryButton: container.querySelector("#timer-clear-history"),
     modeButtons: [...container.querySelectorAll(".timer-mode-button")],
   };
 
@@ -523,7 +563,15 @@ export function mountTimerFeature(container) {
       syncTimerView();
     })
     .catch((error) => {
-      container.innerHTML = `<div class="scheduler-empty"><p>${error.message}</p></div>`;
+      container.innerHTML = isDatabaseConnectionIssue(error.message)
+        ? `
+            <div class="scheduler-gate-card">
+              <p class="feature-label">Study room temporarily unavailable</p>
+              <h3>Your focus history will return once the database reconnects.</h3>
+              <p>The app is having trouble reaching the database right now. Please refresh in a moment.</p>
+            </div>
+          `
+        : `<div class="scheduler-empty"><p>${error.message}</p></div>`;
     });
 
   timerElements.modeButtons.forEach((button) => {
@@ -544,7 +592,12 @@ export function mountTimerFeature(container) {
       await saveSession(false);
       syncTimerView();
     } catch (error) {
-      setStatus(error.message, "error");
+      setStatus(
+        isDatabaseConnectionIssue(error.message)
+          ? "The database is temporarily unavailable. Please refresh in a moment."
+          : error.message,
+        "error",
+      );
     }
   });
 
@@ -557,7 +610,38 @@ export function mountTimerFeature(container) {
       await saveSession(true);
       syncTimerView();
     } catch (error) {
-      setStatus(error.message, "error");
+      setStatus(
+        isDatabaseConnectionIssue(error.message)
+          ? "The database is temporarily unavailable. Please refresh in a moment."
+          : error.message,
+        "error",
+      );
+    }
+  });
+
+  timerElements.clearHistoryButton.addEventListener("click", async () => {
+    if (!window.confirm("Clear your recent study history?")) {
+      return;
+    }
+
+    try {
+      const response = await authenticatedFetch("/api/timer/sessions", {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not clear study history.");
+      }
+
+      renderHistory(data.timer);
+      setStatus("Study history cleared.", "success");
+    } catch (error) {
+      setStatus(
+        isDatabaseConnectionIssue(error.message)
+          ? "The database is temporarily unavailable. Please refresh in a moment."
+          : error.message,
+        "error",
+      );
     }
   });
 

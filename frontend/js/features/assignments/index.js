@@ -1,5 +1,12 @@
 import { authenticatedFetch } from "../auth/index.js";
 
+const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
+
+function isDatabaseConnectionIssue(message) {
+  const normalized = String(message || "").toLowerCase();
+  return normalized.includes("enotfound") || normalized.includes("econnrefused");
+}
+
 function getTodayDateString() {
   const now = new Date();
   const year = now.getFullYear();
@@ -25,6 +32,10 @@ function isStrictValidDate(dateString) {
     parsed.getMonth() === month - 1 &&
     parsed.getDate() === day
   );
+}
+
+function markSchedulerDirty() {
+  window.localStorage.setItem(SCHEDULER_DIRTY_KEY, "1");
 }
 
 export function mountAssignmentFeature(container) {
@@ -208,6 +219,7 @@ export function mountAssignmentFeature(container) {
       assignments = data.assignments || [];
       renderList();
       renderStatus(editingId ? "Assignment updated." : "Assignment created.", "success");
+      markSchedulerDirty();
       resetForm();
     } catch (error) {
       renderStatus(error.message, "error");
@@ -251,10 +263,15 @@ export function mountAssignmentFeature(container) {
         assignments = data.assignments || [];
         renderList();
         renderStatus(`Added 25 minutes to "${assignment.title}".`, "success");
+        markSchedulerDirty();
         return;
       }
 
       if (button.classList.contains("assignment-delete")) {
+        if (!window.confirm(`Delete "${assignment.title}"?`)) {
+          return;
+        }
+
         const response = await authenticatedFetch(`/api/assignments/${id}`, {
           method: "DELETE",
         });
@@ -265,6 +282,7 @@ export function mountAssignmentFeature(container) {
         assignments = data.assignments || [];
         renderList();
         renderStatus(`Deleted "${assignment.title}".`, "success");
+        markSchedulerDirty();
       }
     } catch (error) {
       renderStatus(error.message, "error");
@@ -287,6 +305,18 @@ export function mountAssignmentFeature(container) {
 
   renderStatus("Load or create assignments from this page.", "neutral");
   loadAssignments().catch((error) => {
+    if (isDatabaseConnectionIssue(error.message)) {
+      list.innerHTML = `
+        <div class="scheduler-gate-card">
+          <p class="feature-label">Assignments temporarily unavailable</p>
+          <h3>Your saved work is still there.</h3>
+          <p>The app is having trouble reaching the database right now. Please refresh in a moment.</p>
+        </div>
+      `;
+      renderStatus("The database is temporarily unavailable. Please refresh in a moment.", "error");
+      return;
+    }
+
     renderStatus(error.message, "error");
   });
 }

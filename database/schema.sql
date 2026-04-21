@@ -66,3 +66,13 @@ CREATE TABLE IF NOT EXISTS study_sessions (
   CONSTRAINT fk_study_session_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_study_session_assignment FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS user_commitments (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  label VARCHAR(255) NOT NULL,
+  day_of_week TINYINT NULL,
+  blocked_date DATE NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_commitment_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
