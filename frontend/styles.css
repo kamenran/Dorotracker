@@ -405,6 +405,17 @@ body {
   align-items: start;
 }
 
+.page-utility-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.home-utility-grid {
+  margin-bottom: 0;
+}
+
 .feature-launch-card,
 .feature-card {
   padding: 22px;
@@ -435,6 +446,55 @@ body {
 .feature-launch-card:hover {
   transform: translateY(-2px);
   border-color: rgba(229, 127, 150, 0.28);
+}
+
+.help-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.help-list p {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 244, 247, 0.7);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.alert-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.alert-card {
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.alert-card strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.alert-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.alert-card.info {
+  background: rgba(255, 244, 247, 0.9);
+}
+
+.alert-card.warning {
+  background: rgba(255, 247, 236, 0.96);
+  border-color: rgba(229, 170, 127, 0.24);
 }
 
 .page-view {
@@ -788,11 +848,14 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
+  align-items: start;
 }
 
 .scheduler-week-card {
   display: grid;
+  grid-template-rows: auto min-content;
   gap: 14px;
+  align-content: start;
   border-radius: 22px;
   border: 1px solid var(--line);
   background: linear-gradient(180deg, #fffdfd 0%, #fff7fa 100%);
@@ -804,6 +867,8 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
+  align-content: start;
+  align-items: start;
 }
 
 .scheduler-week-day {
@@ -881,6 +946,21 @@ body {
   border-radius: 18px;
   border: 1px solid rgba(231, 127, 151, 0.14);
   background: rgba(255, 255, 255, 0.92);
+}
+
+.scheduler-block-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.scheduler-edit-block {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .scheduler-block-main,
@@ -1483,6 +1563,7 @@ body {
   .home-dashboard-grid,
   .feature-grid,
   .feature-launch-grid,
+  .page-utility-grid,
   .auth-hero-card,
   .auth-grid,
   .auth-management-grid,

@@ -1,5 +1,7 @@
 import { authenticatedFetch } from "../auth/index.js";
 
+const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
+
 function isDatabaseConnectionIssue(message) {
   const normalized = String(message || "").toLowerCase();
   return normalized.includes("enotfound") || normalized.includes("econnrefused");
@@ -30,6 +32,10 @@ function isStrictValidDate(dateString) {
     parsed.getMonth() === month - 1 &&
     parsed.getDate() === day
   );
+}
+
+function markSchedulerDirty() {
+  window.localStorage.setItem(SCHEDULER_DIRTY_KEY, "1");
 }
 
 export function mountAssignmentFeature(container) {
@@ -213,6 +219,7 @@ export function mountAssignmentFeature(container) {
       assignments = data.assignments || [];
       renderList();
       renderStatus(editingId ? "Assignment updated." : "Assignment created.", "success");
+      markSchedulerDirty();
       resetForm();
     } catch (error) {
       renderStatus(error.message, "error");
@@ -256,6 +263,7 @@ export function mountAssignmentFeature(container) {
         assignments = data.assignments || [];
         renderList();
         renderStatus(`Added 25 minutes to "${assignment.title}".`, "success");
+        markSchedulerDirty();
         return;
       }
 
@@ -274,6 +282,7 @@ export function mountAssignmentFeature(container) {
         assignments = data.assignments || [];
         renderList();
         renderStatus(`Deleted "${assignment.title}".`, "success");
+        markSchedulerDirty();
       }
     } catch (error) {
       renderStatus(error.message, "error");
