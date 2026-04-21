@@ -81,6 +81,7 @@ export function mountAuthFeature(container) {
           <p class="feature-label">Register</p>
           <h3>Create an account</h3>
           <p>Passwords are stored as hashes in MySQL, not as plain text.</p>
+          <p class="auth-helper-copy">Use a real email and a password you will remember for the demo.</p>
           <label><span>Full name</span><input name="fullName" type="text" required /></label>
           <label><span>Email</span><input name="email" type="email" required /></label>
           <label><span>Password</span><input name="password" type="password" minlength="8" required /></label>
@@ -91,6 +92,7 @@ export function mountAuthFeature(container) {
           <p class="feature-label">Sign in</p>
           <h3>Access your planner</h3>
           <p>Use your email and password to load your own saved assignments and schedules.</p>
+          <p class="auth-helper-copy">Sign back in with the same account to show that saved data is tied to your user.</p>
           <label><span>Email</span><input name="email" type="email" required /></label>
           <label><span>Password</span><input name="password" type="password" required /></label>
           <button type="submit">Sign in</button>
@@ -313,7 +315,7 @@ export function mountAuthFeature(container) {
         password: String(formData.get("password") || ""),
       });
       registerForm.reset();
-      renderMessage("Account created and signed in.", "Welcome");
+      renderMessage("Account created and signed in successfully.", "Welcome");
     } catch (error) {
       renderMessage(error.message);
     }
