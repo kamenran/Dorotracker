@@ -1,3 +1,5 @@
+const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
+
 function getToken() {
   return window.localStorage.getItem("dorotracker.sessionToken") || "";
 }
@@ -5,6 +7,7 @@ function getToken() {
 function saveSession(session) {
   window.localStorage.setItem("dorotracker.sessionToken", session.token);
   window.localStorage.setItem("dorotracker.user", JSON.stringify(session.user));
+  window.localStorage.removeItem(SCHEDULER_DIRTY_KEY);
 }
 
 function saveUser(user) {
@@ -14,6 +17,7 @@ function saveUser(user) {
 function clearSession() {
   window.localStorage.removeItem("dorotracker.sessionToken");
   window.localStorage.removeItem("dorotracker.user");
+  window.localStorage.removeItem(SCHEDULER_DIRTY_KEY);
 }
 
 function readStoredUser() {

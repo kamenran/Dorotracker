@@ -1,5 +1,7 @@
 import { authenticatedFetch } from "../auth/index.js";
 
+const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
+
 const WEEKDAY_OPTIONS = [
   { value: 0, label: "Sunday" },
   { value: 1, label: "Monday" },
@@ -39,24 +41,79 @@ function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function isDateBlocked(dateString, commitments = []) {
+  const date = new Date(`${dateString}T12:00:00`);
+  const weekday = date.getDay();
+
+  return commitments.some((commitment) => {
+    if (commitment.blockedDate) {
+      return commitment.blockedDate === dateString;
+    }
+
+    return Number(commitment.dayOfWeek) === weekday;
+  });
+}
+
+function markSchedulerDirty() {
+  window.localStorage.setItem(SCHEDULER_DIRTY_KEY, "1");
+}
+
+function clearSchedulerDirty() {
+  window.localStorage.removeItem(SCHEDULER_DIRTY_KEY);
+}
+
+function isSchedulerDirty() {
+  return window.localStorage.getItem(SCHEDULER_DIRTY_KEY) === "1";
+}
+
 function summarizeBlocks(blocks, assignments = []) {
+  const warnings = buildScheduleWarnings(blocks, assignments);
+
+  return {
+    assignmentCount: new Set(blocks.map((block) => block.assignmentTitle)).size,
+    totalMinutes: blocks.reduce((total, block) => total + Number(block.minutes || 0), 0),
+    overloadedAssignments: warnings.length,
+  };
+}
+
+function getRemainingMinutesForAssignment(assignment) {
+  return Math.max(
+    Number(assignment.estimatedMinutes || 0) - Number(assignment.minutesCompleted || 0),
+    0,
+  );
+}
+
+function buildScheduleWarnings(blocks, assignments = []) {
   const activeAssignments = assignments.filter((assignment) => !isAssignmentCompleted(assignment));
   const scheduledMinutesByAssignment = blocks.reduce((totals, block) => {
     totals[block.assignmentTitle] = (totals[block.assignmentTitle] || 0) + Number(block.minutes || 0);
     return totals;
   }, {});
 
-  return {
-    assignmentCount: new Set(blocks.map((block) => block.assignmentTitle)).size,
-    totalMinutes: blocks.reduce((total, block) => total + Number(block.minutes || 0), 0),
-    overloadedAssignments: activeAssignments.length
-      ? activeAssignments.filter((assignment) => {
-          const remainingMinutes =
-            Math.max(Number(assignment.estimatedMinutes || 0) - Number(assignment.minutesCompleted || 0), 0);
-          return Number(scheduledMinutesByAssignment[assignment.title] || 0) < remainingMinutes;
-        }).length
-      : blocks.filter((block) => block.overdue).length,
-  };
+  const warnings = [];
+
+  activeAssignments.forEach((assignment) => {
+    const remainingMinutes = getRemainingMinutesForAssignment(assignment);
+    const scheduledMinutes = Number(scheduledMinutesByAssignment[assignment.title] || 0);
+
+    if (scheduledMinutes < remainingMinutes) {
+      warnings.push(`${assignment.title} still has ${remainingMinutes - scheduledMinutes} unscheduled minute(s).`);
+    } else if (scheduledMinutes > remainingMinutes) {
+      warnings.push(`${assignment.title} is scheduled for ${scheduledMinutes - remainingMinutes} extra minute(s).`);
+    }
+  });
+
+  const overdueAssignments = [...new Set(
+    blocks
+      .filter((block) => block.overdue)
+      .map((block) => block.assignmentTitle),
+  )];
+
+  overdueAssignments.forEach((title) => {
+    warnings.push(`${title} has study time scheduled after its due date.`);
+  });
+
+  return warnings;
 }
 
 function groupBlocksByDate(blocks) {
@@ -88,6 +145,10 @@ function formatWeekRange(dateString) {
   return `${startLabel} - ${endLabel}`;
 }
 
+function computePomodoroCount(minutes, pomodoroLength) {
+  return Math.max(Math.ceil(Number(minutes || 0) / Math.max(Number(pomodoroLength || 25), 1)), 1);
+}
+
 function renderDayResults(result) {
   const blocksByDate = groupBlocksByDate(result.blocks);
 
@@ -113,6 +174,9 @@ function renderDayResults(result) {
                         <div class="scheduler-block-meta">
                           <span>${formatPomodoroLabel(block.minutes, block.pomodoros)}</span>
                           <span>Due ${formatFriendlyDate(block.dueDate)}</span>
+                        </div>
+                        <div class="scheduler-block-actions">
+                          <button type="button" class="secondary scheduler-edit-block" data-edit-block="${block.clientKey}">Edit block</button>
                         </div>
                       </div>
                     `,
@@ -351,6 +415,14 @@ export function mountSchedulerFeature(container) {
   const commitmentWeekdayLabel = container.querySelector("#commitment-weekday-label");
   const commitmentDateLabel = container.querySelector("#commitment-date-label");
   const viewButtons = [...container.querySelectorAll(".scheduler-view-toggle button")];
+  let blockSerial = 0;
+
+  function stampBlocks(blocks) {
+    return (blocks || []).map((block) => ({
+      ...block,
+      clientKey: block.clientKey || `block-${Date.now()}-${blockSerial += 1}`,
+    }));
+  }
 
   function renderResults() {
     const summary = summarizeBlocks(currentBlocks, schedulerAssignments);
@@ -373,6 +445,12 @@ export function mountSchedulerFeature(container) {
         <div class="scheduler-results-board">${boardMarkup}</div>
       </div>
     `;
+
+    output.querySelectorAll(".scheduler-edit-block").forEach((button) => {
+      button.addEventListener("click", () => {
+        editBlock(button.dataset.editBlock);
+      });
+    });
   }
 
   function renderCommitmentsStatus(message, tone = "neutral") {
@@ -417,6 +495,100 @@ export function mountSchedulerFeature(container) {
     }
 
     return data;
+  }
+
+  async function saveManualBlocks() {
+    const response = await authenticatedFetch("/api/scheduler/manual-save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        blocks: currentBlocks,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Could not save the edited schedule.");
+    }
+
+    currentBlocks = stampBlocks(data.blocks || currentBlocks);
+    clearSchedulerDirty();
+  }
+
+  async function editBlock(blockKey) {
+    const block = currentBlocks.find((entry) => entry.clientKey === blockKey);
+    if (!block) {
+      return;
+    }
+
+    const assignment = schedulerAssignments.find((entry) => entry.title === block.assignmentTitle);
+    const otherScheduledMinutes = currentBlocks.reduce(
+      (total, entry) =>
+        entry.clientKey !== blockKey && entry.assignmentTitle === block.assignmentTitle
+          ? total + Number(entry.minutes || 0)
+          : total,
+      0,
+    );
+    const maxMinutes = assignment
+      ? Math.max(getRemainingMinutesForAssignment(assignment) - otherScheduledMinutes, 0)
+      : Number.MAX_SAFE_INTEGER;
+
+    const nextDate = window.prompt("Move this study block to which date? (YYYY-MM-DD)", block.scheduledDate);
+    if (nextDate === null) {
+      return;
+    }
+
+    const trimmedDate = String(nextDate || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+      renderError(output, "Enter the new block date in YYYY-MM-DD format.");
+      return;
+    }
+
+    if (isDateBlocked(trimmedDate, schedulerCommitments)) {
+      renderError(output, "That day is blocked by one of your saved commitments.");
+      return;
+    }
+
+    const nextMinutes = window.prompt("How many minutes should this study block use?", String(block.minutes));
+    if (nextMinutes === null) {
+      return;
+    }
+
+    const parsedMinutes = Number(nextMinutes || 0);
+    if (!Number.isFinite(parsedMinutes) || parsedMinutes <= 0) {
+      renderError(output, "Enter a positive number of minutes for the study block.");
+      return;
+    }
+
+    if (parsedMinutes > maxMinutes) {
+      renderError(
+        output,
+        `This block cannot exceed ${maxMinutes} minute${maxMinutes === 1 ? "" : "s"} based on the assignment's remaining total.`,
+      );
+      return;
+    }
+
+    currentBlocks = currentBlocks.map((entry) =>
+      entry.clientKey === blockKey
+        ? {
+            ...entry,
+            scheduledDate: trimmedDate,
+            minutes: parsedMinutes,
+            pomodoros: computePomodoroCount(parsedMinutes, readSettings().pomodoroLength),
+            overdue: trimmedDate > entry.dueDate,
+          }
+        : entry,
+    );
+
+    try {
+      await saveManualBlocks();
+      currentWarnings = buildScheduleWarnings(currentBlocks, schedulerAssignments);
+      renderResults();
+    } catch (error) {
+      renderError(output, error.message);
+    }
   }
 
   async function fetchAssignments() {
@@ -493,8 +665,9 @@ export function mountSchedulerFeature(container) {
       const result = await postScheduler("/api/scheduler/generate", {
         ...readSettings(),
       });
-      currentBlocks = result.blocks || [];
-      currentWarnings = result.warnings || [];
+      currentBlocks = stampBlocks(result.blocks || []);
+      currentWarnings = buildScheduleWarnings(currentBlocks, schedulerAssignments);
+      clearSchedulerDirty();
       renderResults();
       return;
     }
@@ -505,8 +678,8 @@ export function mountSchedulerFeature(container) {
       return;
     }
 
-    currentBlocks = latestBlocks;
-    currentWarnings = [];
+    currentBlocks = stampBlocks(latestBlocks);
+    currentWarnings = buildScheduleWarnings(currentBlocks, schedulerAssignments);
     renderResults();
   }
 
@@ -605,8 +778,9 @@ export function mountSchedulerFeature(container) {
       const result = await postScheduler("/api/scheduler/generate", {
         ...readSettings(),
       });
-      currentBlocks = result.blocks || [];
-      currentWarnings = result.warnings || [];
+      currentBlocks = stampBlocks(result.blocks || []);
+      currentWarnings = buildScheduleWarnings(currentBlocks, schedulerAssignments);
+      clearSchedulerDirty();
       renderResults();
     } catch (error) {
       renderError(output, error.message);
@@ -639,6 +813,7 @@ export function mountSchedulerFeature(container) {
       schedulerCommitments = data.commitments || [];
       renderCommitments();
       renderCommitmentsStatus("Commitment saved.", "success");
+      markSchedulerDirty();
       commitmentsForm.reset();
       commitmentsForm.elements.namedItem("label").value = "Busy";
       commitmentType.value = "weekday";
@@ -670,6 +845,7 @@ export function mountSchedulerFeature(container) {
       schedulerCommitments = data.commitments || [];
       renderCommitments();
       renderCommitmentsStatus("Commitment deleted.", "success");
+      markSchedulerDirty();
     } catch (error) {
       renderCommitmentsStatus(error.message, "error");
     }
@@ -699,8 +875,9 @@ export function mountSchedulerFeature(container) {
         schedulerAssignments.splice(0, schedulerAssignments.length, ...(refreshedAssignments.assignments || []));
         renderAssignmentSummary();
       }
-      currentBlocks = result.blocks || [];
-      currentWarnings = result.warnings || [];
+      currentBlocks = stampBlocks(result.blocks || []);
+      currentWarnings = buildScheduleWarnings(currentBlocks, schedulerAssignments);
+      clearSchedulerDirty();
       renderResults();
     } catch (error) {
       renderError(output, error.message);
@@ -709,7 +886,7 @@ export function mountSchedulerFeature(container) {
 
   refreshButton.addEventListener("click", async () => {
     try {
-      await refreshPlanner({ regenerate: true });
+      await refreshPlanner({ regenerate: isSchedulerDirty() });
     } catch (error) {
       renderError(output, error.message);
     }

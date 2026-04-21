@@ -12,7 +12,13 @@ const routes = {
   auth: renderAuthPage,
 };
 
+const IDLE_LOGOUT_MINUTES = 20;
+const ACTIVITY_KEY = "dorotracker.lastActivityAt";
+const IDLE_NOTICE_KEY = "dorotracker.idleNotice";
+const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
+
 let timeIntervalId = null;
+let idleIntervalId = null;
 
 function isDatabaseConnectionIssue(message) {
   const normalized = String(message || "").toLowerCase();
@@ -24,24 +30,44 @@ function isDatabaseConnectionIssue(message) {
   );
 }
 
-function databasePlaceholder(title) {
-  return `
-    <h2>${title}</h2>
-    <p>The planner is having trouble reaching the database right now. Please refresh in a moment.</p>
-  `;
+function getSessionToken() {
+  return window.localStorage.getItem("dorotracker.sessionToken") || "";
 }
 
-function featureCard(route, title, description) {
-  return `
-    <a class="feature-launch-card" href="#${route}">
-      <h3>${title}</h3>
-      <p>${description}</p>
-      <span>Open page</span>
-    </a>
-  `;
+function clearLocalSession() {
+  window.localStorage.removeItem("dorotracker.sessionToken");
+  window.localStorage.removeItem("dorotracker.user");
+  window.localStorage.removeItem(SCHEDULER_DIRTY_KEY);
 }
 
-function getStoredFirstName() {
+function markActivity() {
+  if (!getSessionToken()) {
+    return;
+  }
+
+  window.localStorage.setItem(ACTIVITY_KEY, String(Date.now()));
+}
+
+async function forceIdleLogout() {
+  if (!getSessionToken()) {
+    return;
+  }
+
+  try {
+    await authenticatedFetch("/api/auth/logout", { method: "POST" });
+  } catch {
+    // Best effort only.
+  }
+
+  clearLocalSession();
+  window.localStorage.setItem(
+    IDLE_NOTICE_KEY,
+    "You were signed out after being inactive for 20 minutes.",
+  );
+  renderRoute();
+}
+
+function readStoredFirstName() {
   const rawUser = window.localStorage.getItem("dorotracker.user");
   if (!rawUser) {
     return "";
@@ -55,20 +81,10 @@ function getStoredFirstName() {
   }
 }
 
-function cloudMascot(label = "Doro cloud") {
+function databasePlaceholder(title) {
   return `
-    <div class="cloud-mascot" aria-label="${label}" role="img">
-      <div class="cloud-mascot-body">
-        <span class="cloud-eye left"></span>
-        <span class="cloud-eye right"></span>
-        <span class="cloud-blush left"></span>
-        <span class="cloud-blush right"></span>
-        <span class="cloud-smile"></span>
-      </div>
-      <div class="cloud-sparkle one"></div>
-      <div class="cloud-sparkle two"></div>
-      <div class="cloud-sparkle three"></div>
-    </div>
+    <h2>${title}</h2>
+    <p>The planner is having trouble reaching the database right now. Please refresh in a moment.</p>
   `;
 }
 
@@ -81,14 +97,84 @@ function pageFrame(title, description, route, content = "") {
         <p>${description}</p>
       </header>
       <section class="page-panel" id="page-panel">
+        <div class="page-utility-grid">
+          <section class="feature-card" id="page-alerts">
+            <p class="feature-label">Alerts</p>
+            <h2>Planner reminders</h2>
+            <p>Loading your latest reminders...</p>
+          </section>
+          <section class="feature-card">
+            <p class="feature-label">Quick start</p>
+            ${renderHelpContent(route)}
+          </section>
+        </div>
         ${content}
       </section>
     </section>
   `;
 }
 
+function renderHelpContent(route) {
+  const help = {
+    scheduler: {
+      title: "How to use the planner",
+      points: [
+        "Add assignments first, then generate a study plan.",
+        "Use commitments to block out workdays or unavailable dates.",
+        "If your progress changes, click refresh to rebuild the plan.",
+        "Use Edit block when you want to manually move or resize one study block.",
+      ],
+    },
+    assignments: {
+      title: "How to manage assignments",
+      points: [
+        "Create one assignment at a time with a valid future due date.",
+        "Priority and estimated minutes feed directly into the scheduler.",
+        "Minutes completed should reflect progress out of the estimated total.",
+        "Delete and edit actions are confirmed so you do not lose data by accident.",
+      ],
+    },
+    timer: {
+      title: "How the study room works",
+      points: [
+        "Choose a focus or break session and start the timer.",
+        "Link focus sessions to an unfinished assignment when you want progress tracked.",
+        "Save partial or completed focus sessions to update study history.",
+        "The scheduler refresh will rebuild using your latest saved progress.",
+      ],
+    },
+    auth: {
+      title: "How account tools work",
+      points: [
+        "Register or sign in to keep all planner data private to your account.",
+        "Use profile tools to update your name or email.",
+        "Reset password requires your current password first.",
+        "Idle sessions now sign out automatically after 20 minutes of inactivity.",
+      ],
+    },
+    home: {
+      title: "How to use DoroTracker",
+      points: [
+        "Start with Account so your planner, assignments, and sessions stay tied to your own profile.",
+        "Use Assignments to add your work one item at a time with a due date, priority, and estimated time.",
+        "Open Scheduler to generate a study plan, then refresh it whenever your assignments or availability change.",
+        "Use Pomodoro to log focus sessions and keep your assignment progress moving forward.",
+      ],
+    },
+  };
+
+  const selected = help[route] || help.home;
+
+  return `
+    <h2>${selected.title}</h2>
+    <div class="help-list">
+      ${selected.points.map((point) => `<p>${point}</p>`).join("")}
+    </div>
+  `;
+}
+
 function renderHomePage(app) {
-  const firstName = getStoredFirstName();
+  const firstName = readStoredFirstName();
   const plannerTitle = firstName ? `${firstName}'s Planner` : "Your Planner";
 
   app.innerHTML = `
@@ -113,9 +199,21 @@ function renderHomePage(app) {
         </div>
       </div>
     </section>
+    <section class="page-utility-grid home-utility-grid">
+      <section class="feature-card" id="page-alerts">
+        <p class="feature-label">Alerts</p>
+        <h2>Planner reminders</h2>
+        <p>Loading your latest reminders...</p>
+      </section>
+      <section class="feature-card">
+        <p class="feature-label">Quick start</p>
+        ${renderHelpContent("home")}
+      </section>
+    </section>
   `;
 
   loadHomeDashboard();
+  loadPageAlerts();
 }
 
 function renderSchedulerPage(app) {
@@ -126,6 +224,7 @@ function renderSchedulerPage(app) {
   );
 
   mountSchedulerFeature(document.getElementById("page-panel"));
+  loadPageAlerts();
 }
 
 function renderAssignmentsPage(app) {
@@ -136,6 +235,7 @@ function renderAssignmentsPage(app) {
   );
 
   mountAssignmentFeature(document.getElementById("page-panel"));
+  loadPageAlerts();
 }
 
 function renderTimerPage(app) {
@@ -146,6 +246,7 @@ function renderTimerPage(app) {
   );
 
   mountTimerFeature(document.getElementById("page-panel"));
+  loadPageAlerts();
 }
 
 function renderAuthPage(app) {
@@ -156,6 +257,7 @@ function renderAuthPage(app) {
   );
 
   mountAuthFeature(document.getElementById("page-panel"));
+  loadPageAlerts();
 }
 
 function renderRoute() {
@@ -192,13 +294,122 @@ function mountClock() {
   timeIntervalId = window.setInterval(updateClock, 1000);
 }
 
+function renderAlerts(target, data) {
+  if (!target) {
+    return;
+  }
+
+  const dueSoon = (data.upcomingAssignments || []).filter((assignment) => {
+    const due = new Date(`${assignment.dueDate}T12:00:00`);
+    const now = new Date();
+    const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 && diffDays <= 2;
+  });
+
+  const alerts = [];
+
+  const idleNotice = window.localStorage.getItem(IDLE_NOTICE_KEY);
+  if (idleNotice) {
+    alerts.push({ tone: "warning", title: "Security reminder", body: idleNotice });
+    window.localStorage.removeItem(IDLE_NOTICE_KEY);
+  }
+
+  if (dueSoon.length) {
+    alerts.push({
+      tone: "warning",
+      title: "Deadlines approaching",
+      body: dueSoon.map((assignment) => `${assignment.title} is due ${assignment.dueDate}.`).join(" "),
+    });
+  }
+
+  if ((data.todayBlocks || []).length) {
+    alerts.push({
+      tone: "info",
+      title: "Today's study plan",
+      body: `${data.todayBlocks.length} study block${data.todayBlocks.length === 1 ? " is" : "s are"} planned for today.`,
+    });
+  }
+
+  if (Number(data.summary?.todayStudyMinutes || 0) > 240) {
+    alerts.push({
+      tone: "warning",
+      title: "Heavy workload",
+      body: `You have ${data.summary.todayStudyMinutes} minutes planned today. Review your schedule if this feels too packed.`,
+    });
+  }
+
+  if (!alerts.length) {
+    target.innerHTML = `
+      <p class="feature-label">Alerts</p>
+      <h2>Planner reminders</h2>
+      <p>No urgent reminders right now. Your planner is looking calm.</p>
+    `;
+    return;
+  }
+
+  target.innerHTML = `
+    <p class="feature-label">Alerts</p>
+    <h2>Planner reminders</h2>
+    <div class="alert-stack">
+      ${alerts
+        .map(
+          (alert) => `
+            <article class="alert-card ${alert.tone}">
+              <strong>${alert.title}</strong>
+              <p>${alert.body}</p>
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+async function loadPageAlerts() {
+  const alertsTarget = document.getElementById("page-alerts");
+  if (!alertsTarget) {
+    return;
+  }
+
+  try {
+    const response = await authenticatedFetch("/api/dashboard");
+    if (response.status === 401) {
+      const idleNotice = window.localStorage.getItem(IDLE_NOTICE_KEY);
+      alertsTarget.innerHTML = `
+        <p class="feature-label">Alerts</p>
+        <h2>Planner reminders</h2>
+        <p>${idleNotice || "Sign in to load live reminders for due dates, study sessions, and workload warnings."}</p>
+      `;
+      if (idleNotice) {
+        window.localStorage.removeItem(IDLE_NOTICE_KEY);
+      }
+      return;
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Could not load alerts.");
+    }
+
+    renderAlerts(alertsTarget, data);
+  } catch (error) {
+    alertsTarget.innerHTML = isDatabaseConnectionIssue(error.message)
+      ? databasePlaceholder("Alerts syncing...")
+      : `
+          <p class="feature-label">Alerts</p>
+          <h2>Planner reminders</h2>
+          <p>${error.message}</p>
+        `;
+  }
+}
+
 async function loadHomeDashboard() {
   const dashboard = document.getElementById("home-dashboard");
   if (!dashboard) {
     return;
   }
 
-  const firstName = getStoredFirstName();
+  const firstName = readStoredFirstName();
   const plannerTitle = firstName ? `${firstName}'s Planner` : "Your Planner";
 
   try {
@@ -261,6 +472,38 @@ async function loadHomeDashboard() {
   }
 }
 
+function mountIdleLogout() {
+  const activityEvents = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
+  activityEvents.forEach((eventName) => {
+    window.addEventListener(eventName, markActivity, { passive: true });
+  });
+
+  markActivity();
+
+  if (idleIntervalId) {
+    window.clearInterval(idleIntervalId);
+  }
+
+  idleIntervalId = window.setInterval(() => {
+    const token = getSessionToken();
+    if (!token) {
+      return;
+    }
+
+    const lastActivityAt = Number(window.localStorage.getItem(ACTIVITY_KEY) || 0);
+    if (!lastActivityAt) {
+      markActivity();
+      return;
+    }
+
+    const idleMs = Date.now() - lastActivityAt;
+    if (idleMs >= IDLE_LOGOUT_MINUTES * 60 * 1000) {
+      forceIdleLogout();
+    }
+  }, 10000);
+}
+
 window.addEventListener("hashchange", renderRoute);
 mountClock();
+mountIdleLogout();
 renderRoute();
