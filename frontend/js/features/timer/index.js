@@ -1,6 +1,7 @@
 import { authenticatedFetch } from "../auth/index.js";
 
 const TIMER_STATE_KEY = "dorotracker.timerState";
+const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
 
 let timerIntervalId = null;
 let timerElements = null;
@@ -46,6 +47,10 @@ function loadPersistedState() {
 
 function persistState() {
   window.localStorage.setItem(TIMER_STATE_KEY, JSON.stringify(timerState));
+}
+
+function markSchedulerDirty() {
+  window.localStorage.setItem(SCHEDULER_DIRTY_KEY, "1");
 }
 
 function formatClock(totalSeconds) {
@@ -289,7 +294,13 @@ function renderHistory(timer) {
                 <strong>${formatSessionLabel(session.sessionType)}</strong>
                 <span>${session.completed ? "Completed" : "Stopped early"}</span>
               </div>
-              <p>${session.assignmentTitle || "No assignment linked"}</p>
+              ${
+                session.assignmentTitle
+                  ? `<p>${session.assignmentTitle}</p>`
+                  : session.sessionType === "focus"
+                    ? `<p>No assignment linked</p>`
+                    : ""
+              }
               <div class="timer-history-meta">
                 <span>${session.actualMinutes} min logged</span>
                 <span>${formatTimestamp(session.createdAt)}</span>
@@ -396,6 +407,7 @@ async function saveSession(forceCompleted) {
 
   renderHistory(data.timer);
   if (timerState.mode === "focus" && data.session?.assignmentId && timerState.autoApplyProgress) {
+    markSchedulerDirty();
     setStatus("Session saved and assignment progress updated.", "success");
   } else {
     setStatus("Session saved to recent history.", "success");

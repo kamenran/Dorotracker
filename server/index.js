@@ -247,6 +247,72 @@ function normalizeBlocksForComparison(blocks) {
   }));
 }
 
+function normalizeManualScheduleBlocks(blocks, assignments) {
+  if (!Array.isArray(blocks) || !blocks.length) {
+    throw new Error("No schedule blocks were provided.");
+  }
+
+  const normalizedBlocks = blocks.map((block) => {
+    const assignmentId = Number(block.assignmentId || 0) || null;
+    const assignmentTitle = String(block.assignmentTitle || "").trim();
+    const dueDate = String(block.dueDate || "").trim();
+    const scheduledDate = String(block.scheduledDate || "").trim();
+    const minutes = Number(block.minutes || 0);
+    const pomodoros = Number(block.pomodoros || 0);
+    const priority = Number(block.priority || 0);
+    const overdue = Boolean(block.overdue);
+
+    if (!assignmentTitle || !parseDateParts(dueDate) || !parseDateParts(scheduledDate)) {
+      throw new Error("Manual schedule blocks must include valid assignment and date values.");
+    }
+
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      throw new Error("Manual schedule blocks must use positive minutes.");
+    }
+
+    const matchedAssignment =
+      assignments.find((assignment) => Number(assignment.id) === assignmentId) ||
+      assignments.find((assignment) => assignment.title === assignmentTitle);
+
+    if (!matchedAssignment) {
+      throw new Error(`Could not match the schedule block for ${assignmentTitle}.`);
+    }
+
+    return {
+      assignmentId: matchedAssignment.id,
+      assignmentTitle: matchedAssignment.title,
+      dueDate,
+      scheduledDate,
+      minutes,
+      pomodoros: Number.isFinite(pomodoros) && pomodoros > 0 ? pomodoros : Math.max(Math.ceil(minutes / 25), 1),
+      priority: Number.isFinite(priority) && priority > 0 ? priority : Number(matchedAssignment.priority || 3),
+      overdue,
+    };
+  });
+
+  const totalsByAssignment = normalizedBlocks.reduce((totals, block) => {
+    totals[block.assignmentId] = (totals[block.assignmentId] || 0) + Number(block.minutes || 0);
+    return totals;
+  }, {});
+
+  normalizedBlocks.forEach((block) => {
+    const assignment = assignments.find((entry) => Number(entry.id) === Number(block.assignmentId));
+    const remainingMinutes = Math.max(
+      Number(assignment?.estimatedMinutes || 0) - Number(assignment?.minutesCompleted || 0),
+      0,
+    );
+    const scheduledMinutes = Number(totalsByAssignment[block.assignmentId] || 0);
+
+    if (scheduledMinutes > remainingMinutes) {
+      throw new Error(
+        `${block.assignmentTitle} cannot be scheduled for more than ${remainingMinutes} total minute${remainingMinutes === 1 ? "" : "s"}.`,
+      );
+    }
+  });
+
+  return normalizedBlocks;
+}
+
 function blocksMatch(leftBlocks, rightBlocks) {
   return JSON.stringify(normalizeBlocksForComparison(leftBlocks)) === JSON.stringify(normalizeBlocksForComparison(rightBlocks));
 }
@@ -594,6 +660,20 @@ const server = http.createServer(async (request, response) => {
           return result;
         })(),
       );
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/scheduler/manual-save") {
+      const auth = await requireUser(request, response);
+      if (!auth) {
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      const assignments = await listAssignments(auth.user.id);
+      const blocks = normalizeManualScheduleBlocks(body.blocks, assignments);
+      await saveSchedule(auth.user.id, "reschedule", blocks);
+      sendJson(response, 200, { blocks });
       return;
     }
 
