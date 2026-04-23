@@ -1632,4 +1632,37 @@ body {
   .timer-action-row {
     grid-template-columns: 1fr;
   }
+  .assignments-toolbar {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: end;
+  }
+  
+  .assignments-toolbar-field {
+    display: grid;
+    gap: 6px;
+    min-width: 220px;
+    color: var(--muted);
+  }
+  
+  .assignments-toolbar-field input,
+  .assignments-toolbar-field select {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: #fffdfd;
+    color: var(--ink);
+  }
+  
+  .assignment-status-badge.overdue {
+    background: #fff1f4;
+    color: #b84c67;
+  }
+  
+  .assignment-status-badge.due-soon {
+    background: #fff7ec;
+    color: #b9784a;
+  }
 }

@@ -67,14 +67,31 @@ export function mountAssignmentFeature(container) {
       </form>
 
       <div class="assignments-status" id="assignments-status"></div>
+
+      <div class="assignments-toolbar">
+        <label class="assignments-toolbar-field">
+          <span>Search</span>
+          <input id="assignments-search" type="text" placeholder="Find an assignment" />
+        </label>
+        <label class="assignments-toolbar-field">
+          <span>Sort by</span>
+          <select id="assignments-sort">
+            <option value="dueDate">Due date</option>
+            <option value="priority">Priority</option>
+            <option value="title">Title</option>
+          </select>
+        </label>
+      </div>
+      
       <div class="assignments-list" id="assignments-list"></div>
-    </div>
   `;
 
   const form = container.querySelector("#assignments-form");
   const list = container.querySelector("#assignments-list");
   const status = container.querySelector("#assignments-status");
   const refreshButton = container.querySelector("#assignments-refresh");
+  const searchInput = container.querySelector("#assignments-search");
+  const sortSelect = container.querySelector("#assignments-sort");
   const cancelButton = container.querySelector("#assignments-cancel");
   const submitButton = container.querySelector("#assignments-submit");
   const dueDateInput = form.elements.namedItem("dueDate");
@@ -110,16 +127,67 @@ export function mountAssignmentFeature(container) {
     submitButton.textContent = "Save changes";
     cancelButton.hidden = false;
   }
-
+  function getVisibleAssignments() {
+    const searchValue = String(searchInput.value || "").trim().toLowerCase();
+    const sortValue = String(sortSelect.value || "dueDate");
+  
+    let visibleAssignments = [...assignments];
+  
+    if (searchValue) {
+      visibleAssignments = visibleAssignments.filter((assignment) =>
+        assignment.title.toLowerCase().includes(searchValue),
+      );
+    }
+  
+    visibleAssignments.sort((left, right) => {
+      if (sortValue === "priority") {
+        return Number(right.priority || 0) - Number(left.priority || 0);
+      }
+  
+      if (sortValue === "title") {
+        return left.title.localeCompare(right.title);
+      }
+  
+      return left.dueDate.localeCompare(right.dueDate);
+    });
+  
+    return visibleAssignments;
+  }
+  
+  function getAssignmentBadgeState(assignment) {
+    const completed = Number(assignment.minutesCompleted || 0) >= Number(assignment.estimatedMinutes || 0);
+  
+    if (completed) {
+      return { completed: true, overdue: false, dueSoon: false };
+    }
+  
+    const dueDate = new Date(`${assignment.dueDate}T12:00:00`);
+    const today = new Date(`${todayDateString}T12:00:00`);
+    const dueSoonLimit = new Date(`${todayDateString}T12:00:00`);
+    dueSoonLimit.setDate(dueSoonLimit.getDate() + 2);
+  
+    return {
+      completed: false,
+      overdue: dueDate < today,
+      dueSoon: dueDate >= today && dueDate <= dueSoonLimit,
+    };
+  } 
   function renderList() {
+    const visibleAssignments = getVisibleAssignments();
     if (!assignments.length) {
       list.innerHTML = `<p class="scheduler-empty">No assignments saved for this account yet.</p>`;
       return;
     }
 
-    list.innerHTML = assignments
+    if (!visibleAssignments.length) {
+      list.innerHTML = `<p class="scheduler-empty">No assignments match your search.</p>`;
+      return;
+    }
+    
+    list.innerHTML = visibleAssignments
       .map((assignment) => {
         const isCompleted = Number(assignment.minutesCompleted || 0) >= Number(assignment.estimatedMinutes || 0);
+        const badgeState = getAssignmentBadgeState(assignment);
 
         return `
           <article class="assignment-record-card ${isCompleted ? "completed" : ""}">
@@ -129,7 +197,9 @@ export function mountAssignmentFeature(container) {
                 <h4>${assignment.title}</h4>
               </div>
               <div class="assignment-record-badges">
-                ${isCompleted ? `<span class="assignment-status-badge">Completed</span>` : ""}
+              ${badgeState.completed ? `<span class="assignment-status-badge">Completed</span>` : ""}
+              ${badgeState.overdue ? `<span class="assignment-status-badge overdue">Overdue</span>` : ""}
+              ${badgeState.dueSoon ? `<span class="assignment-status-badge due-soon">Due soon</span>` : ""}
                 <span>Due ${assignment.dueDate}</span>
                 <span>${assignment.estimatedMinutes} min</span>
                 <span>${assignment.minutesCompleted} min done</span>
@@ -297,6 +367,9 @@ export function mountAssignmentFeature(container) {
       renderStatus(error.message, "error");
     }
   });
+
+  searchInput.addEventListener("input", renderList);
+  sortSelect.addEventListener("change", renderList);
 
   cancelButton.addEventListener("click", () => {
     resetForm();
