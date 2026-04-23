@@ -7,6 +7,6 @@
     "start": "node server/index.js"
   },
   "dependencies": {
-    "mysql2": "^3.22.1"
+    "mysql2": "^3.22.2"
   }
 }

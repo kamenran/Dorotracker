@@ -1620,6 +1620,7 @@ body {
   color: var(--muted);
 }
 
+
 @media (max-width: 760px) {
   .feature-grid {
     grid-template-columns: 1fr;
@@ -1632,4 +1633,11 @@ body {
   .timer-action-row {
     grid-template-columns: 1fr;
   }
+  .timer-cycle-note {
+  margin: 10px 0 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
 }

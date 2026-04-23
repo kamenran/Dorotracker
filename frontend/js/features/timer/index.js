@@ -6,6 +6,11 @@ const SCHEDULER_DIRTY_KEY = "dorotracker.schedulerDirty";
 let timerIntervalId = null;
 let timerElements = null;
 let timerState = createDefaultState();
+ 
+let timerSummary = {
+  focusSessionsCompleted: 0,
+  focusMinutesCompleted: 0,
+};
 
 function isDatabaseConnectionIssue(message) {
   const normalized = String(message || "").toLowerCase();
@@ -187,6 +192,13 @@ function syncTimerView() {
   timerElements.autoApply.checked = Boolean(timerState.autoApplyProgress);
   timerElements.assignmentSelect.value = timerState.assignmentId ? String(timerState.assignmentId) : "";
 
+  const nextCycle = (Number(timerSummary.focusSessionsCompleted || 0) % 4) + 1;
+
+timerElements.cycleNote.textContent =
+  timerState.mode === "focus"
+    ? `Focus cycle ${nextCycle} of 4`
+    : "Break time helps the next focus block feel lighter.";
+
   syncModeButtons();
 }
 
@@ -269,14 +281,15 @@ function renderHistory(timer) {
   if (!timerElements) {
     return;
   }
+  timerSummary = timer.summary || timerSummary;
 
   timerElements.summary.innerHTML = `
     <div class="timer-stat-card">
-      <strong>${timer.summary.focusSessionsCompleted}</strong>
+      <strong>${timersummary.focusSessionsCompleted}</strong>
       <span>completed focus sessions</span>
     </div>
     <div class="timer-stat-card">
-      <strong>${timer.summary.focusMinutesCompleted}</strong>
+      <strong>${timersummary.focusMinutesCompleted}</strong>
       <span>focus minutes logged</span>
     </div>
     <div class="timer-stat-card">
@@ -443,6 +456,7 @@ export function mountTimerFeature(container) {
           <p class="timer-hero-copy">
             Choose a focus block or break, attach it to an assignment if you want, and save completed sessions.
           </p>
+          <p class="timer-cycle-note" id="timer-cycle-note"></p>
         </div>
         <div class="timer-hero-mascot">
           ${renderCloudCompanion()}
@@ -541,6 +555,7 @@ export function mountTimerFeature(container) {
     history: container.querySelector("#timer-history"),
     clearHistoryButton: container.querySelector("#timer-clear-history"),
     modeButtons: [...container.querySelectorAll(".timer-mode-button")],
+    cycleNote: container.querySelector("#timer-cycle-note"),
   };
 
   loadAssignmentsAndHistory()
