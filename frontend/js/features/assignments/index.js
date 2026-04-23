@@ -175,7 +175,7 @@ export function mountAssignmentFeature(container) {
   function renderList() {
     const visibleAssignments = getVisibleAssignments();
     if (!assignments.length) {
-      list.innerHTML = `<p class="scheduler-empty">No assignments saved for this account yet.</p>`;
+      list.innerHTML = `<p class="scheduler-empty">No assignments saved yet. Add one above to start building your study plan.</p>`;
       return;
     }
 
