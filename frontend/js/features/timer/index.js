@@ -194,10 +194,10 @@ function syncTimerView() {
 
   const nextCycle = (Number(timerSummary.focusSessionsCompleted || 0) % 4) + 1;
 
-timerElements.cycleNote.textContent =
-  timerState.mode === "focus"
-    ? `Focus cycle ${nextCycle} of 4`
-    : "Break time helps the next focus block feel lighter.";
+  timerElements.cycleNote.textContent =
+    timerState.mode === "focus"
+      ? `Focus cycle ${nextCycle} of 4`
+      : "Break time helps the next focus block feel lighter.";
 
   syncModeButtons();
 }
@@ -285,11 +285,11 @@ function renderHistory(timer) {
 
   timerElements.summary.innerHTML = `
     <div class="timer-stat-card">
-      <strong>${timersummary.focusSessionsCompleted}</strong>
+      <strong>${timerSummary.focusSessionsCompleted}</strong>
       <span>completed focus sessions</span>
     </div>
     <div class="timer-stat-card">
-      <strong>${timersummary.focusMinutesCompleted}</strong>
+      <strong>${timerSummary.focusMinutesCompleted}</strong>
       <span>focus minutes logged</span>
     </div>
     <div class="timer-stat-card">
