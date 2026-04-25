@@ -1654,6 +1654,13 @@ body {
   color: #b9784a;
 }
 
+.timer-cycle-note {
+  margin: 10px 0 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
 @media (max-width: 760px) {
   .feature-grid {
     grid-template-columns: 1fr;
