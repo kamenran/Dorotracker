@@ -73,13 +73,3 @@ Verified local run outline:
 6. Open `http://127.0.0.1:8000`
 
 Because local MySQL configurations can vary by machine, the hosted deployment remains the recommended access path for review.
-
-## Submission Contents
-
-The final submission package is intended to include:
-
-- the application code
-- the live access link
-- access instructions
-- the video demonstration
-- the document summarizing contributions by team member
